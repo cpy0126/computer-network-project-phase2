@@ -9,12 +9,12 @@
 #define MSS 300
 
 struct package{
-    int type: SEND, RECV, CMD
+    int type: SEND, RECV, CMD_LOGIN, CMD_ADD, CMD_DEL
     time_t Time
     int content: IMG, FILE, MSS
     char buf[2048]
-    char sender[128]
-    char recver[128]
+    std::string sender
+    std::string recver
     int buf_size
 }
 ```
