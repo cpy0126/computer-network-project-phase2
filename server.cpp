@@ -11,15 +11,19 @@
 #include<sys/stat.h>
 #include<time.h>
 #include<unistd.h>
+#include<string.h>
+#include<map>
 using namespace std;
 
 #define ERR(a) {perror(a): return EXIT_FAILURE;}
-#define SEND 10
-#define RECV 20
-#define CMD 30
 #define IMG 100
 #define FILES 200
 #define MSS 300
+#define LOGIN 400
+#define ADD 500
+#define DEL 600
+
+
 #define ERR_EXIT(a) do { perror(a); exit(1); } while(0)
 
 typedef struct server{
@@ -28,25 +32,29 @@ typedef struct server{
     int listen_fd;  // fd to wait for a new connection
 } server;
 
-typedef struct request{
-    int conn_fd;  // fd to talk with client
-    int status;
-    char buf[2048];  // data sent by/to client
-    std::string user_name;
-} request;
-
 typedef struct package{
-    int type, content, buf_size;
-    char buf[2048], sender[128], recver[128];
+    int type, buf_size;
+    char buf[2048];
+    char sender[64];
+    char recver[64];
     time_t Time;
     package(){
-        type = content = buf_size = 0;
+        type = buf_size = 0;
         memset(buf, 0, sizeof(buf));
-        memset(sender, 0, sizeof(sender));
-        memset(recver, 0, sizeof(recver));
+        // memset(sender, 0, sizeof(sender));
+        // memset(recver, 0, sizeof(recver));
         Time = time(NULL);
     }
 } package;
+
+typedef struct request{
+    int conn_fd;  // fd to talk with client
+    int filesize;
+    // int status;     
+    // char buf[2048];  // data sent by/to client
+    package now;
+    std::string user_name;
+} request;
 
 server svr;
 request* requestP = NULL;
@@ -60,9 +68,29 @@ void init_request(request* reqP);
 
 void free_request(request* reqP);
 
-// int handle_read(){
-//     //...
-// }
+int handle_read(request* reqP){
+    if(recv(reqP->conn_fd, &(reqP->now), sizeof(package), 0)<=0){
+        // need to free request
+        return 0;
+    }
+    reqP->now.buf[reqP->now.buf_size]='\0';
+    return 1;
+}
+
+void set_response(package *now,int type,int bufferSize,char *buffer,char sender[],char recver[]){
+    now->type=type;
+    now->buf_size=bufferSize;
+    memset(now->buf,0,sizeof(now->buf));
+    memcpy(now->buf,buffer,bufferSize);
+    if(sender!=NULL)
+        memcpy(now->sender,sender,64);
+    else
+        memset(now->sender,0,64);
+    if(recver!=NULL)
+        memcpy(now->recver,recver,64);
+    else
+        memset(now->recver,0,64);
+}
 
 int main(int argc, char* argv[]){
     if (argc != 2){
@@ -73,10 +101,15 @@ int main(int argc, char* argv[]){
     chdir("./server_dir");
 
     struct sockaddr_in cliaddr; // used by accept()
+    char username_used[16]="Username used";
+    char succeed[16]="Succeeed";
+    char failed[8]="Failed";
+    std::map<string,int> user_names;
 
     // Initialize server
     init_server((unsigned short)atoi(argv[1]));
     fprintf(stderr, "\nstarting on %.80s, port %d, fd %d, maxconn %d...\n", svr.hostname, svr.port, svr.listen_fd, maxfd);
+
 
     fd_set read_OK;
     fd_set write_OK;
@@ -85,7 +118,7 @@ int main(int argc, char* argv[]){
         FD_ZERO(&read_OK);
         FD_ZERO(&write_OK);
         FD_SET(svr.listen_fd, &read_OK);
-        for(int a=4;a<10000;a++){   // choosing clients ready for write/read
+        for(int a=4;a<=maxfd;a++){   // choosing clients ready for write/read
             if(writeFD[a])
                 FD_SET(a, &write_OK);
             if(readFD[a])
@@ -105,10 +138,118 @@ int main(int argc, char* argv[]){
             }
             readFD[conn_fd]=1;
             requestP[conn_fd].conn_fd=conn_fd;
-            requestP[conn_fd].status=0;
-            write(requestP[conn_fd].conn_fd, "input your username:\n", 22);
+            package response;
+            // char command[8]="init";// input your username: (alphabet and digits only)\n
+            // set_response(&response,CMD,sizeof(command),command,std::string(),std::string());
+            // send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
             fprintf(stderr, "getting a new request... fd %d from %s\n", conn_fd, inet_ntoa(cliaddr.sin_addr));
             continue;
+        }
+
+        for(int conn_fd=4;conn_fd<=maxfd;conn_fd++){
+            if(!FD_ISSET(conn_fd, &read_OK)&&!FD_ISSET(conn_fd, &write_OK))
+                continue;
+            handle_read(&requestP[conn_fd]);
+
+            if(requestP[conn_fd].now.type==LOGIN){    // inputing username
+                package response;
+                string new_user=string(requestP[conn_fd].now.buf);
+                if(user_names.find(new_user)!=user_names.end()){
+                    set_response(&response,LOGIN,sizeof(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                    continue;
+                }
+                user_names[new_user]=requestP[conn_fd].conn_fd;
+                mkdir(new_user.c_str(),0777);
+                set_response(&response,LOGIN,sizeof(succeed),succeed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                requestP[conn_fd].user_name=new_user;
+                continue;
+            }
+            else if(requestP[conn_fd].now.type==ADD){    // Adding friend
+                package response;
+                string new_friend = string(requestP[conn_fd].now.buf);
+                if(user_names.find(new_friend)==user_names.end()){
+                    set_response(&response,ADD,sizeof(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                    continue;
+                }
+                char friend_name[150]="./";
+                strcat(friend_name,requestP[conn_fd].user_name.c_str());
+                strcat(friend_name,"/");
+                strcat(friend_name,new_friend.c_str());
+                creat(friend_name,0777);
+
+                char friend_name2[150]="./";
+                strcat(friend_name2,new_friend.c_str());
+                strcat(friend_name2,"/");
+                strcat(friend_name2,requestP[conn_fd].user_name.c_str());
+                creat(friend_name2,0777);
+
+                set_response(&response,ADD,sizeof(succeed),succeed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                send(user_names[new_friend],&response,sizeof(response),0);
+            }
+            else if(requestP[conn_fd].now.type==DEL){    // Deleteing friend
+                package response;
+                string new_friend = string(requestP[conn_fd].now.buf);
+                if(user_names.find(new_friend)==user_names.end()){
+                    set_response(&response,DEL,sizeof(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                    continue;
+                }
+                char friend_name[150]="./";
+                strcat(friend_name,requestP[conn_fd].user_name.c_str());
+                strcat(friend_name,"/");
+                strcat(friend_name,new_friend.c_str());
+                remove(friend_name);
+
+                char friend_name2[150]="./";
+                strcat(friend_name2,new_friend.c_str());
+                strcat(friend_name2,"/");
+                strcat(friend_name2,requestP[conn_fd].user_name.c_str());
+                remove(friend_name2);
+
+                set_response(&response,DEL,sizeof(succeed),succeed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                send(user_names[new_friend],&response,sizeof(response),0);
+            }
+            else if(requestP[conn_fd].now.type==MSS){    // receve message
+                package response;
+                string new_friend = string(requestP[conn_fd].now.recver);
+                if(user_names.find(new_friend)==user_names.end()){
+                    set_response(&response,MSS,sizeof(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+fprintf(stderr, "This should not happen %s send to %s\n",requestP[conn_fd].now.sender,requestP[conn_fd].now.recver);
+                    continue;
+                }
+                char friend_name[150]="./";
+                strcat(friend_name,requestP[conn_fd].user_name.c_str());
+                strcat(friend_name,"/");
+                strcat(friend_name,new_friend.c_str());
+                int me=open(friend_name,O_APPEND);
+                write(me,&(requestP[conn_fd].now),sizeof(package));
+                close(me);
+
+                char friend_name2[150]="./";
+                strcat(friend_name2,new_friend.c_str());
+                strcat(friend_name2,"/");
+                strcat(friend_name2,requestP[conn_fd].user_name.c_str());
+                int you=remove(friend_name2);
+                write(you,&(requestP[conn_fd].now),sizeof(package));
+                close(you);
+
+                set_response(&response,DEL,sizeof(succeed),succeed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                send(user_names[new_friend],&response,sizeof(response),0);
+            }
+            else if(requestP[conn_fd].now.type==IMG){    // receve image
+                
+            }
+            else if(requestP[conn_fd].now.type==FILES){    // receve file
+                
+            }
+
         }
 
 
@@ -119,10 +260,8 @@ int main(int argc, char* argv[]){
 
 
 void init_request(request *reqP){
-    reqP->conn_fd = -1;
-    reqP->status=-1;
-    // reqP->user_name;
-    memset(reqP->buf,0,sizeof(reqP->buf));
+    reqP->conn_fd=-1;
+    reqP->filesize=0;
 }
 
 void free_request(request *reqP){
@@ -145,7 +284,6 @@ void init_server(unsigned short port){
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(port);
-
     if (bind(svr.listen_fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0){
         ERR_EXIT("bind");
     }

@@ -40,6 +40,7 @@ struct package{
 // }
 
 int main(int argc, char* argv[]){
-     
+    char homepage[256]="Welcome to HomePage !\n(1) Add a friend\n(2) delete a friend\n(3) Choose a friend to chat with\n(4) List all my friend\n";
+
 }
 
