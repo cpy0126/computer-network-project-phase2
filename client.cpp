@@ -92,6 +92,12 @@ void recv_server(int type,int buf_size,char *buf,char *sender,char *recver,packa
 
 int file_select(const struct dirent *entry);
 
+void get_data(char *buffer,char *data);
+
+int check_username(char *tmp);
+
+void remove_friend(char *fri);
+
 int main(int argc, char* argv[]){
     if (argc != 3){
         fprintf(stderr, "usage: %s [port]\n", argv[0]);
@@ -125,7 +131,10 @@ int main(int argc, char* argv[]){
             // select whether browser send request
             select(10,&read_OK,NULL,NULL,NULL);
             if(FD_ISSET(svr.conn_fd,&read_OK)){
-                
+                if(!handle_server()){
+                    free_request(&req);
+                    break;
+                }  
             }
             if(FD_ISSET(req.conn_fd,&read_OK)){
                 if(!handle_http()){ // handle with http request
@@ -141,6 +150,20 @@ int main(int argc, char* argv[]){
     return 0;
 }
 
+int handle_server(){
+    package got;
+    recv(svr.conn_fd,&got,sizeof(package));
+    if(got.type==ADD){
+        mkdir(got.buf,0777);
+        char path="./";
+        strcat(path,got.buf);
+        strcat(path,"/chat");
+        creat(path,0777);
+    }
+    else if(got.type==DEL){
+        remove_friend(got.buf);
+    }
+}
 
 int handle_http(){
     char buffer[100000];
@@ -176,22 +199,13 @@ int handle_http(){
     }
     else if(strcmp(method,"POST")==0){  //deal with post request
         if(!strcmp(reqfile,"/username")){
-            char *content=strstr(buffer,"\r\n\r\n");
-            if(content==NULL){
-                content=strstr(buffer,"\n\n");
-                if(content==NULL){
-                    fprintf(stderr,"I can't get request content\n");
-                }
-            }
-            content++;
-            char *name=strstr(content,"=");name++;
+            char name[64]="\0";
+            get_data(buffer,name);
             send2server(LOGIN,strlen(name),name,NULL,NULL);
             package sent;
             recv(svr.conn_fd,&sent,sizeof(package),0);
-            if(!strcmp(sent.buf,succeed)){
+            if(!strcmp(sent.buf,succeed)&&check_username(name)){
                 strcpy(username,name);
-                // mkdir(username,0777);
-                // chdir(username);
                 if(!send_homepage())
                     return 0;
             }
@@ -201,7 +215,6 @@ int handle_http(){
             }
         }
         else if(!strcmp(reqfile,"/list_friend")){
-            chdir(username);
             struct dirent **user_file;
             int n=scandir(".", &user_file, file_select, alphasort);
             char response[4096]="\0";
@@ -222,8 +235,38 @@ int handle_http(){
             set_http_header(response,size,"text/html");
             strcat(response,friend_list);
             send(req.conn_fd,response,strlen(response),0);
-            chdir("..");
             return 1;
+        }
+        else if(!strcmp(reqfile,"/add_friend")){
+            char name[64]="\0";
+            get_data(buffer,name);
+            send2server(ADD,strlen(name),name,NULL,NULL);
+            package sent;
+            recv(svr.conn_fd,&sent,sizeof(package),0);
+            if(!send_homepage())
+                return 0;
+            if(!strcmp(sent.buf,succeed)){
+                mkdir(name,0777);
+                char path="./";
+                strcat(path,name);
+                strcat(path,"/chat");
+                creat(path,0777);
+            }
+        }
+        else if(!strcmp(reqfile,"/del_friend")){
+            char name[64]="\0";
+            get_data(buffer,name);
+            send2server(DEL,strlen(name),name,NULL,NULL);
+            package sent;
+            recv(svr.conn_fd,&sent,sizeof(package),0);
+            if(!send_homepage())
+                return 0;
+            if(!strcmp(sent.buf,succeed)){
+                remove_friend(name);
+            }
+        }
+        else if(!strcmp(reqfile,"/chat_with")){
+            
         }
         else{
             char buf[4096]="\0";
@@ -280,18 +323,30 @@ int send_login(int wrong){
     if(index<=0) perror("open fail");
     size=read(index,index_buf,2048);
     if(size<=0) perror("read fail");
+    
     if(wrong){
         size+=strlen(used);
+        strcat(index_buf,used);
     }
     set_http_header(buf,size,"text/html");
-    if(wrong){
-        strcat(buf,used);
-    }
     strcat(buf,index_buf);
     int sent=send(req.conn_fd,buf,strlen(buf),MSG_NOSIGNAL);
     close(index);
     fprintf(stderr,"%s\n",buf);
     return (sent<=0)?0:1;
+}
+
+void get_data(char *buffer,char *data){
+    char *tmp=strstr(buffer,"\r\n\r\n");
+    if(tmp==NULL){
+        tmp=strstr(buffer,"\n\n");
+        if(tmp==NULL){
+            fprintf(stderr,"I can't get request content\n");
+        }
+    }
+    tmp++;
+    char *name=strstr(tmp,"=");name++;
+    strncpy(data,name,strlen(name));
 }
 
 // send homepage.html to browser
@@ -405,4 +460,22 @@ void init_server(int port, char *ip){
 
 int file_select(const struct dirent *entry){
    return strcmp(entry->d_name, ".")&&strcmp(entry->d_name, "..");
+}
+
+int check_username(char *tmp){
+    while(*tmp!='\0'){
+        char now=*tmp;
+        if((now-'a')*(now-'z')>0&&(now-'A')*(now-'Z')>0&&(now-'0')*(now-'9')>0)
+            return 0;
+        tmp++;
+    }
+    return 1;
+}
+
+void remove_friend(char *fri){
+    char path[128]="./";
+    strcat(path,fri);
+    strcat(path,"/chat");
+    remove(path);
+    rmdir(fri);
 }
