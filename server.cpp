@@ -71,9 +71,10 @@ void free_request(request* reqP);
 int handle_read(request* reqP){
     if(recv(reqP->conn_fd, &(reqP->now), sizeof(package), 0)<=0){
         // need to free request
+        
         return 0;
     }
-    reqP->now.buf[reqP->now.buf_size]='\0';
+    // reqP->now.buf[reqP->now.buf_size]='\0';
     return 1;
 }
 
@@ -138,11 +139,16 @@ int main(int argc, char* argv[]){
             }
             readFD[conn_fd]=1;
             requestP[conn_fd].conn_fd=conn_fd;
-            package response;
+            // package response;
             // char command[8]="init";// input your username: (alphabet and digits only)\n
             // set_response(&response,CMD,sizeof(command),command,std::string(),std::string());
             // send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+            
+            // handle_read(&requestP[conn_fd]);
+            // fprintf(stderr, "%s\n",requestP[conn_fd].now.buf);
+
             fprintf(stderr, "getting a new request... fd %d from %s\n", conn_fd, inet_ntoa(cliaddr.sin_addr));
+            
             continue;
         }
 
@@ -150,7 +156,7 @@ int main(int argc, char* argv[]){
             if(!FD_ISSET(conn_fd, &read_OK)&&!FD_ISSET(conn_fd, &write_OK))
                 continue;
             handle_read(&requestP[conn_fd]);
-
+            
             if(requestP[conn_fd].now.type==LOGIN){    // inputing username
                 package response;
                 string new_user=string(requestP[conn_fd].now.buf);
