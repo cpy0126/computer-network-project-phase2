@@ -103,34 +103,33 @@ int main(int argc, char* argv[]){
     char *cross=strstr(argv[1],":");*cross='\0';cross++;
     strcpy(ip,argv[1]);
     int svr_port=atoi(cross);
-    init_server(svr_port,ip);
-    int listen_fd=init_client((unsigned short)atoi(argv[2]));
+    init_server(svr_port,ip);   //build connection with server
+    int listen_fd=init_client((unsigned short)atoi(argv[2]));   //create socket to listen to browser
     fprintf(stderr, "Running \n");
 
     while(1){
         struct sockaddr_in cliaddr;
         int clilen = sizeof(cliaddr);
+        // accept a new connection from browser
         int conn_fd = accept(listen_fd, (struct sockaddr*)&cliaddr, (socklen_t*)&clilen);
         if (conn_fd < 0){
             ERR_EXIT("accept");
         }
         req.conn_fd=conn_fd;
         fprintf(stderr, "\nstarting on %.80s, port %s connect fd %d\n", svr.hostname, argv[2],conn_fd);
-        // timeval tm;
-        // tm.tv_sec=0;
-        // tm.tv_usec=20;
+        
         fd_set read_OK;
         while(1){
             FD_ZERO(&read_OK);
             FD_SET(req.conn_fd, &read_OK);
+            // select whether browser send request
             select(10,&read_OK,NULL,NULL,NULL);
             if(FD_ISSET(svr.conn_fd,&read_OK)){
                 
             }
             if(FD_ISSET(req.conn_fd,&read_OK)){
-                if(!handle_http()){
+                if(!handle_http()){ // handle with http request
                     free_request(&req);
-                    chdir("..");
                     break;
                 }
             }
@@ -154,9 +153,10 @@ int handle_http(){
     char method[8],reqfile[128];
     get_method(buffer,method);
     get_request_file(buffer,reqfile);
-    if(strcmp(method,"GET")==0){
-        if(!strcmp(reqfile,"/")){
-            if(!send_login(0)){
+    // deal with get request, such as first connection with client
+    if(strcmp(method,"GET")==0){    
+        if(!strcmp(reqfile,"/")){   // receive 
+            if(!send_login(0)){ 
                 ERR_EXIT("Wrong sending");
                 return 0;
             }
@@ -174,7 +174,7 @@ int handle_http(){
             return 0;
         }
     }
-    else if(strcmp(method,"POST")==0){
+    else if(strcmp(method,"POST")==0){  //deal with post request
         if(!strcmp(reqfile,"/username")){
             char *content=strstr(buffer,"\r\n\r\n");
             if(content==NULL){
@@ -232,7 +232,7 @@ int handle_http(){
             return 0;
         }
     }
-    else{
+    else{   //deal with undefined behavior
         char buf[4096]="\0";
         set_404_header(buf);
         send(req.conn_fd,buf,sizeof(buf),0);
@@ -241,12 +241,14 @@ int handle_http(){
     return 1;
 }
 
+// get http request method
 void get_method(char* buffer,char* method){
     strncpy(method,buffer,8);
     char *space=strstr(method," ");
     *space='\0';
 }
 
+// get http request's file (thing after method)
 void get_request_file(char* buffer,char* reqfile){
     int idx=0;
     char *space=strstr(buffer," ");space++;
@@ -267,6 +269,8 @@ void send2server(int type,int buf_size,char *buf,char *sender,char *recver){
     send(svr.conn_fd,&sent,sizeof(package),0);
 }
 
+/* send index.html to browser
+ * when wrong is True, ask user to enter name again*/
 int send_login(int wrong){
     char buf[4096]="\0";
     char index_buf[2048]="\0";
@@ -290,6 +294,7 @@ int send_login(int wrong){
     return (sent<=0)?0:1;
 }
 
+// send homepage.html to browser
 int send_homepage(){
     char buf[4096]="\0";
     char index_buf[2048]="\0";
@@ -306,6 +311,7 @@ int send_homepage(){
     return (sent<=0)?0:1;
 }
 
+// set http header of response, save it to buf
 int set_http_header(char *buf,int content_len,const char *filetype){
     char code[64]="\0";
     strcpy(code,"HTTP/1.1 200 OK\r\n");
@@ -320,6 +326,7 @@ int set_http_header(char *buf,int content_len,const char *filetype){
     return strlen(buf);  
 }
 
+// set http 404 to browser
 void set_404_header(char *buf){
     strcat(buf,"HTTP/1.1 404 Bad Request\r\n");
     strcat(buf,"Server: jdbhttpd/0.1.0\r\n");
@@ -328,6 +335,7 @@ void set_404_header(char *buf){
     strcat(buf,"<html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center><hr><center>nginx/0.8.54</center></body></html>"); 
 }
 
+// set response to server, save it to now
 void set_response(package *now,int type,int bufferSize,char *buffer,char sender[],char recver[]){
     now->type=type;
     now->buf_size=bufferSize;
@@ -353,6 +361,7 @@ void free_request(request *reqP){
     init_request(reqP);
 }
 
+// build connection with browser
 int init_client(unsigned short port){
     struct sockaddr_in servaddr;
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -377,6 +386,7 @@ int init_client(unsigned short port){
     return listen_fd;
 }
 
+// build connection with server
 void init_server(int port, char *ip){
 	svr.conn_fd=socket(AF_INET, SOCK_STREAM, 0);
     if (svr.conn_fd < 0)
