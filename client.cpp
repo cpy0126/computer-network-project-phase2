@@ -49,16 +49,17 @@ typedef struct package{
 
 typedef struct request{
     int conn_fd;  // fd to talk with client
+    int chatfd;
     int filesize;
+    char username[64];
+    char chat_friend[64];
     // int status;     
     // char buf[2048];  // data sent by/to client
     package send;
-    std::string user_name;
 } request;
 
 server svr;
 request req;
-char username[64]="\0";
 char succeed[16]="Succeeed";
 char failed[8]="Failed";
 
@@ -84,7 +85,7 @@ int send_homepage();
 
 int handle_http();
 
-void set_response(package *now,int type,int bufferSize,char *buffer,char sender[],char recver[]);
+void set_response(package *now,int type,int bufferSize,char *buffer,char *sender,char *recver);
 
 void send2server(int type,int buf_size,char *buf,char *sender,char *recver);
 
@@ -99,6 +100,10 @@ int check_username(char *tmp);
 void remove_friend(char *fri);
 
 int handle_server();
+
+void set_chatroom(char *buf,int len);
+
+void set_latest(int fd,int piece,char *buf);
 
 int main(int argc, char* argv[]){
     if (argc != 3){
@@ -165,6 +170,18 @@ int handle_server(){
     else if(got.type==DEL){
         remove_friend(got.buf);
     }
+    else if(got.type==MSS){
+        char path[128]="./";
+        strcat(path,got.sender);
+        strcat(path,"/chat");
+        int fd=open(path,O_RDWR|O_APPEND);
+        if(fd<0){
+            perror("open file failed recv server");
+            fprintf(stderr,"path = %s\n",path);
+        }
+        write(fd,&got,sizeof(package));
+        close(fd);
+    }
     return 1;
 }
 
@@ -176,7 +193,7 @@ int handle_http(){
     if(get<=0){
         return 0;
     }
-    char method[8],reqfile[128];
+    char method[8]="\0",reqfile[128]="\0";
     get_method(buffer,method);
     get_request_file(buffer,reqfile);
     // deal with get request, such as first connection with client
@@ -203,10 +220,10 @@ int handle_http(){
             package sent;
             recv(svr.conn_fd,&sent,sizeof(package),0);
             if(!strcmp(sent.buf,succeed)&&check_username(name)){
-                strcpy(username,name);
+                strcpy(req.username,name);
                 chdir("..");
-                rename("./client_dir",username);
-                chdir(username);
+                rename("./client_dir",req.username);
+                chdir(req.username);
                 if(!send_homepage())
                     return 0;
             }
@@ -268,7 +285,62 @@ int handle_http(){
             }
         }
         else if(!strcmp(reqfile,"/chat_with")){
+            char name[64]="\0",path[256]="./";
+            get_data(buffer,name);
+            strncpy(req.chat_friend,name,64);
+            int chatlog;
+            strcat(path,name);
+            strcat(path,"/chat");
+            chatlog=open(path,O_RDWR|O_APPEND);
+            if(chatlog<0)
+                perror("Open chat failed");
+            req.chatfd=chatlog;
+            char latest30[200000];
+            set_latest(req.chatfd,30,latest30);
+            // fprintf(stderr,"DDDD\n");
+            char response[220000]="\0";
+            set_chatroom(response,strlen(latest30));
+            strcat(response,latest30);
+            send(req.conn_fd,response,strlen(response),0);
+        }
+        else if(!strcmp(reqfile,"/send_message")){
+            char messege[512]="\0";
+            get_data(buffer,messege);
+            package new_msg;
+            set_response(&new_msg,MSS,strlen(messege),messege,req.username,req.chat_friend);
+            write(req.chatfd,&new_msg,sizeof(package));
+            send2server(MSS,strlen(messege),messege,req.username,req.chat_friend);
             
+            char latest30[200000]="\0";
+            set_latest(req.chatfd,30,latest30);
+            char response[220000]="\0";
+            set_chatroom(response,strlen(latest30));
+            strcat(response,latest30);
+            send(req.conn_fd,response,strlen(response),0);
+        }
+        else if(!strcmp(reqfile,"/homepage")){
+            close(req.chatfd);
+            req.chatfd=-1;
+            send_homepage();
+        }
+        else if(!strcmp(reqfile,"/view_history")){
+            char piece[64]="\0",path[256]="./";
+            get_data(buffer,piece);
+            char latest[200000]="\0";
+            set_latest(req.chatfd,atoi(piece),latest);
+            char response[220000]="\0";
+            set_chatroom(response,strlen(latest));
+            strcat(response,latest);
+            send(req.conn_fd,response,strlen(response),0);
+        }
+        else if(!strcmp(reqfile,"/update")){
+            char path[256]="./";
+            char latest[200000]="\0";
+            set_latest(req.chatfd,30,latest);
+            char response[220000]="\0";
+            set_chatroom(response,strlen(latest));
+            strcat(response,latest);
+            send(req.conn_fd,response,strlen(response),0);
         }
         else{
             char buf[4096]="\0";
@@ -334,7 +406,6 @@ int send_login(int wrong){
     strcat(buf,index_buf);
     int sent=send(req.conn_fd,buf,strlen(buf),MSG_NOSIGNAL);
     close(index);
-    fprintf(stderr,"%s\n",buf);
     return (sent<=0)?0:1;
 }
 
@@ -364,7 +435,6 @@ int send_homepage(){
     strcat(buf,index_buf);
     int sent=send(req.conn_fd,buf,size,MSG_NOSIGNAL);
     close(index);
-    fprintf(stderr,"%s\n",buf);
     return (sent<=0)?0:1;
 }
 
@@ -393,7 +463,7 @@ void set_404_header(char *buf){
 }
 
 // set response to server, save it to now
-void set_response(package *now,int type,int bufferSize,char *buffer,char sender[],char recver[]){
+void set_response(package *now,int type,int bufferSize,char *buffer,char *sender,char *recver){
     now->type=type;
     now->buf_size=bufferSize;
     memset(now->buf,0,sizeof(now->buf));
@@ -480,4 +550,36 @@ void remove_friend(char *fri){
     strcat(path,"/chat");
     remove(path);
     rmdir(fri);
+}
+
+void set_chatroom(char *buf,int len){
+    char index_buf[2048]="\0";
+    int index,size;*buf='\0';
+    index=open("../template/chatroom.html",O_RDONLY);
+    if(index<=0) perror("open fail");
+    size=read(index,index_buf,2048);
+    if(size<=0) perror("read fail");
+    size+=set_http_header(buf,size+len,"text/html");
+    strcat(buf,index_buf);
+    close(index);
+}
+
+void set_latest(int fd,int piece,char *buf){
+    *buf='\0';
+    lseek(fd,0,SEEK_SET);
+    int fsize=lseek(fd,0,SEEK_END);
+    if(fsize<0)
+        perror("open failed");
+    lseek(fd,-min(fsize,piece*(int)sizeof(package)),SEEK_END);
+    package *his=(package *)malloc(piece*sizeof(package));
+    long long int rsize=read(fd,his,piece*sizeof(package));
+    
+    for(int a=0;a<rsize/sizeof(package);a++){
+        strcat(buf,"<p>");
+        strcat(buf,his[a].sender);
+        strcat(buf," : ");
+        strcat(buf,his[a].buf);
+        strcat(buf,"</p>");
+    }
+    lseek(fd,0,SEEK_SET);
 }

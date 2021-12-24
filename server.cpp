@@ -247,9 +247,9 @@ fprintf(stderr, "This should not happen %s send to %s\n",requestP[conn_fd].now.s
                 write(you,&(requestP[conn_fd].now),sizeof(package));
                 close(you);
 
-                set_response(&response,DEL,sizeof(succeed),succeed,NULL,NULL);
-                send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
-                send(user_names[new_friend],&response,sizeof(response),0);
+                // set_response(&response,MSS,sizeof(succeed),succeed,NULL,NULL);
+                // send(requestP[conn_fd].conn_fd,&response,sizeof(package),0);
+                send(user_names[new_friend],&(requestP[conn_fd].now),sizeof(package),0);
             }
             else if(requestP[conn_fd].now.type==IMG){    // receve image
                 
