@@ -98,6 +98,8 @@ int check_username(char *tmp);
 
 void remove_friend(char *fri);
 
+int handle_server();
+
 int main(int argc, char* argv[]){
     if (argc != 3){
         fprintf(stderr, "usage: %s [port]\n", argv[0]);
@@ -127,7 +129,7 @@ int main(int argc, char* argv[]){
         fd_set read_OK;
         while(1){
             FD_ZERO(&read_OK);
-            FD_SET(req.conn_fd, &read_OK);
+            FD_SET(req.conn_fd, &read_OK);FD_SET(svr.conn_fd, &read_OK);
             // select whether browser send request
             select(10,&read_OK,NULL,NULL,NULL);
             if(FD_ISSET(svr.conn_fd,&read_OK)){
@@ -152,10 +154,10 @@ int main(int argc, char* argv[]){
 
 int handle_server(){
     package got;
-    recv(svr.conn_fd,&got,sizeof(package));
+    recv(svr.conn_fd,&got,sizeof(package),0);
     if(got.type==ADD){
         mkdir(got.buf,0777);
-        char path="./";
+        char path[128]="./";
         strcat(path,got.buf);
         strcat(path,"/chat");
         creat(path,0777);
@@ -163,13 +165,14 @@ int handle_server(){
     else if(got.type==DEL){
         remove_friend(got.buf);
     }
+    return 1;
 }
 
 int handle_http(){
-    char buffer[100000];
+    char buffer[100000]="\0";
     int get=recv(req.conn_fd, buffer, 100000, 0);
     int sent=1;
-    fprintf(stderr,"%s\n",buffer);
+    // fprintf(stderr,"%s\n",buffer);
     if(get<=0){
         return 0;
     }
@@ -184,12 +187,7 @@ int handle_http(){
                 return 0;
             }
             return 1;
-        }
-        else if(!strcmp(reqfile,"/favicon.ico")){
-            char buf[1024];
-            set_404_header(buf);
-            send(req.conn_fd,buf,1024,0);
-        }    
+        }   
         else{
             char buf[4096]="\0";
             set_404_header(buf);
@@ -206,6 +204,9 @@ int handle_http(){
             recv(svr.conn_fd,&sent,sizeof(package),0);
             if(!strcmp(sent.buf,succeed)&&check_username(name)){
                 strcpy(username,name);
+                chdir("..");
+                rename("./client_dir",username);
+                chdir(username);
                 if(!send_homepage())
                     return 0;
             }
@@ -224,7 +225,7 @@ int handle_http(){
             int size=read(index,friend_list,2048);
             if(size<=0) perror("read fail");
             for(int i=0;i<n;i++){
-                char now[128];
+                char now[128]="\0";
                 strcat(now,"<p>");
                 strcat(now, user_file[i]->d_name);
                 strcat(now, "</p>");
@@ -232,6 +233,7 @@ int handle_http(){
                 size+=strlen(now);
                 free(user_file[i]);
             }
+            free(user_file);
             set_http_header(response,size,"text/html");
             strcat(response,friend_list);
             send(req.conn_fd,response,strlen(response),0);
@@ -247,7 +249,7 @@ int handle_http(){
                 return 0;
             if(!strcmp(sent.buf,succeed)){
                 mkdir(name,0777);
-                char path="./";
+                char path[128]="./";
                 strcat(path,name);
                 strcat(path,"/chat");
                 creat(path,0777);

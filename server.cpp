@@ -194,7 +194,7 @@ int main(int argc, char* argv[]){
 
                 set_response(&response,ADD,sizeof(succeed),succeed,NULL,NULL);
                 send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
-                set_response(&response,ADD,strlen(new_friend.c_str()),new_friend.c_str(),NULL,NULL);
+                set_response(&response,ADD,strlen(requestP[conn_fd].user_name.c_str()),(char *)requestP[conn_fd].user_name.c_str(),NULL,NULL);
                 send(user_names[new_friend],&response,sizeof(response),0);
             }
             else if(requestP[conn_fd].now.type==DEL){    // Deleteing friend
@@ -219,6 +219,7 @@ int main(int argc, char* argv[]){
 
                 set_response(&response,DEL,sizeof(succeed),succeed,NULL,NULL);
                 send(requestP[conn_fd].conn_fd,&response,sizeof(response),0);
+                set_response(&response,DEL,strlen(requestP[conn_fd].user_name.c_str()),(char *)requestP[conn_fd].user_name.c_str(),NULL,NULL);
                 send(user_names[new_friend],&response,sizeof(response),0);
             }
             else if(requestP[conn_fd].now.type==MSS){    // receve message
