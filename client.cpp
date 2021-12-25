@@ -37,6 +37,7 @@ string header404 ="\
     Connection: Closed\r\n\r\n\
     <html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center>\
     <hr><center>nginx/0.8.54</center></body></html>";
+string used = "<html><h2>Username used, please choose another</h2></html>", recver;
 
 struct package{
     int type, buf_size;
@@ -52,38 +53,12 @@ struct package{
 } package;
 
 char buf[1000000],head_buf[1000];
-int bufsize,headsize,sock_fd,http_fd,cli_fd;
+int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
 long long int filesize;
 
-int login(bool flag){
-    string used = "<html><h2>Username used, please choose another</h2></html>", header = "text/html";
-    int file_fd = open("./template/index.html", O_RDONLY), res;
-    if(file_fd<0) return -1;
-    filesize = lseek(file_fd, 0, SEEK_END);
-    if(filesize<0){
-        close(file_fd);
-        return -1;
-    }
-    lseek(file_fd, 0, SEEK_SET);
-    if(flag) header = set_header(filesize+used.length(), header);
-    else header = set_header(filesize, header);
-    if(write(cli_fd, header.c_str(), header.length())<0){
-        close(file_fd);
-        return -1;
-    }
-    while((res = read(file_fd, buf, filesize)) > 0){
-        if(write(cli_fd, buf, res)<0){
-            close(file_fd);
-            return -1;
-        }
-        filesize -= res;
-    }
-    close(file_fd);
-    if(res<0) return -1;
-    if(flag) if(write(cli_fd, used.c_str(), used.length())<0) return -1;
-    return 0;
-}
-
+int index();
+int get(string path, int extra=0);
+int post(string event, int body_size=0);
 
 int handle_http(){
     int res, body_size = 0;
@@ -102,31 +77,33 @@ int handle_http(){
     }
     res = shead.find(" ");
     method = shead.substr(0,res);
+    shead = shead.substr(res+1);
+    res = shead.find(" ");
+    reqpath = shead.substr(0,res);
+    res = shead.find("?");
+    reqpath = reqpath.substr(0,res);
     if(method=="GET"){
-        shead = shead.substr(res+1);
-        res = shead.find(" ");
-        reqpath = shead.substr(0,res);
-        if(reqpath=="/")
-            return login(0);
-        else{
-            if(write(cli_fd, header404.c_str(), header404.length())<0) return -1; 
-            return 0;
+        if(reqpath=="/"){
+            if(logflag==1) return get((string)"/homepage.html");
+            return index();
         }
+        else
+            return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
     }
     if(method=="POST"){
         res = shead.rfind("Content-Length: ");
         shead = shead.substr(res);
         res = shead.find("\r\n");
         body_size = stoi(shead.substr(16,res));
+        if(reqpath=="/send_image" || reqpath=="/send_file") return post(reqpath, body_size);
         while(1){
+            //need to check connection with server
             if((res = read(cli_fd, buf+bufsize, body_size))<0) continue;
-            if(!res) return -1;
             bufsize += res;
             body_size -= res;
             if(body_size==0) break;
         }
-        cerr << ((string)buf).substr(0,bufsize+1) << endl;
-        return 0;
+        return post(reqpath);
     }
     return -1;
 }
@@ -198,5 +175,131 @@ int main(int argc, char* argv[]){
             if(FD_ISSET(cli_fd, &read_OK))
                 if(handle_http()<0) break;
         }
+    }
+}
+
+int index(){
+    if(logflag==1) return get((string)"/homepage.html");
+    int file_fd = open("./template/index.html", O_RDONLY), res;
+    string header = "text/html";
+    if(file_fd<0) return -1;
+    filesize = lseek(file_fd, 0, SEEK_END);
+    if(filesize<0){
+        close(file_fd);
+        return -1;
+    }
+    lseek(file_fd, 0, SEEK_SET);
+    if(logflag==-1) header = set_header(filesize+used.length(), header);
+    else header = set_header(filesize, header);
+    if(write(cli_fd, header.c_str(), header.length())<0){
+        close(file_fd);
+        return -1;
+    }
+    while((res = read(file_fd, buf, filesize)) > 0){
+        if(write(cli_fd, buf, res)<0){
+            close(file_fd);
+            return -1;
+        }
+        filesize -= res;
+    }
+    close(file_fd);
+    if(res<0) return -1;
+    if(logflag<0) if(write(cli_fd, used.c_str(), used.length())<0) return -1;
+    return 0;
+}
+
+int get(string path, int extra){
+    if(logflag!=1) return index();
+    string header = "text/html";
+    path = "./template" + path;
+    int file_fd = open(path.c_str(), O_RDONLY), res;
+    if(file_fd<0)
+        return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
+    filesize = lseek(file_fd, 0, SEEK_END);
+    if(filesize<0){
+        close(file_fd);
+        return -1;
+    }
+    lseek(file_fd, 0, SEEK_SET);
+    header = set_header(filesize+extra, header);
+    if(write(cli_fd, header.c_str(), header.length())<0){
+        close(file_fd);
+        return -1;
+    }
+    while((res = read(file_fd, buf, filesize)) > 0){
+        if(write(cli_fd, buf, res)<0){
+            close(file_fd);
+            return -1;
+        }
+        filesize -= res;
+    }
+    close(file_fd);
+    if(res<0) return -1;
+    return 0;
+}
+
+int post(string event, int body_size){
+    if(event=="/username"){
+        string name = (string) buf;
+        //logflag = send name 2 server to check valid(1) or not(-1)
+        logflag = 1;
+        return index();
+    }
+    if(event=="/list_friend"){
+        //extra = friend_list_size recv from server
+        int extra = 0;
+        get("/homepage.html",extra);
+        /*
+        while(extra>0){
+            //need to check connection with server
+            res = read(cli_fd, buf, extra);
+            if(res<0 || write(cli_fd, buf, res)<0) return -1;
+            extra -= res;
+        }
+        */
+        return 0;
+    }
+    if(event=="/add_friend"){
+        string name = (string) buf;
+        //send 2 server
+        return get("/homepage.html");
+    }
+    if(event=="/del_friend"){
+        string name = (string) buf;
+        //send 2 server
+        return get("/homepage.html");
+    }
+    if(event=="/chat_with"){
+        recver = (string) buf;
+        return get("/chatroom.html");
+    }
+    if(event=="/send_message"){
+        //send buf 2 server
+    }
+    if(event=="/send_image"){
+        //read buf and then send 2 server
+    }
+    if(event=="/send_file"){
+        //read buf and then send 2 server
+    }
+    if(event=="/homepage"){
+        return get("/homepage.html");
+    }
+    if(event=="/view_history" || event=="/update"){
+        int tmp;
+        if(event=="/update") tmp = 20;
+        else tmp = atoi(buf);
+        //extra = history_size recv from server
+        int extra = 0;
+        get("/chatroom.html",extra);
+        /*
+        while(extra>0){
+            //need to check connection with server
+            res = read(cli_fd, buf, extra);
+            if(res<0 || write(cli_fd, buf, res)<0) return -1;
+            extra -= res;
+        }
+        */
+        return 0;
     }
 }
