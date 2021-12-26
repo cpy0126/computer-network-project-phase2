@@ -358,6 +358,8 @@ int post(string event, int body_size){
     }
     if(event=="/chat_with"){
         string name = (string) buf;
+        res = name.find("=");
+        name = name.substr(res+1);
 
         package pkg(CHECK, name);
         if(write_package(pkg)<0) return -1;
