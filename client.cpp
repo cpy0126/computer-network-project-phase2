@@ -120,7 +120,7 @@ int handle_http(){
     reqpath = reqpath.substr(0,res);
     if(method=="GET"){
         if(reqpath=="/"){
-            if(logflag==1) return get((string)"/homepage.html");
+            if(logflag==1) return get("/homepage.html");
             return index();
         }
         else
@@ -147,7 +147,7 @@ int handle_http(){
 
 int main(int argc, char* argv[]){
     
-    if(argc>3||argc<2){
+    if(argc!=3){
         cout<<"usage: [server] ip:port [browser] port (default=80)"<<endl;
         return 1;
     }
@@ -173,12 +173,10 @@ int main(int argc, char* argv[]){
     memset(&httpaddr, 0, sizeof(httpaddr));
     httpaddr.sin_family = AF_INET;
     res = -1;
-    if(argc==2) res = 80;
-    else
-        if((res = atoi(argv[2]))<0 || res>65535){
-            cout<<"browser port should be a number between 0 to 65535."<<endl;
-            return 1;
-        }
+    if((res = atoi(argv[2]))<0 || res>65535){
+        cout<<"browser port should be a number between 0 to 65535."<<endl;
+        return 1;
+    }
     httpaddr.sin_port = htons(res);
     httpaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
@@ -218,7 +216,7 @@ int main(int argc, char* argv[]){
 }
 
 int index(){
-    if(logflag==1) return get((string)"/homepage.html");
+    if(logflag==1) return get("/homepage.html");
     int file_fd = open("./template/index.html", O_RDONLY), res;
     string header = "text/html";
     if(file_fd<0)
@@ -321,15 +319,16 @@ int post(string event, int body_size){
         if(write_package(pkg)<0) return -1;
         if(read_package(pkg)<0) return -1;
 
-        int extra = atoi(pkg.buf);
+        string tmp = (string) pkg.buf;
+        res = tmp.find(" ");
+        int num = stoi(tmp.substr(0,res));
+        int extra = stoi(tmp.substr(res+1)) + 7*num;
         get("/homepage.html",extra);
 
-        string content;
-        while(extra>0){
+        for(int i=0;i<num;++i){
             if(read_package(pkg)<0) return -1;
-            content = "<p>" + (string)pkg.buf + "</p>";
-            if(write(cli_fd, content.c_str(), content.length())<0) return -1;
-            extra -= content.length();
+            tmp = "<p>" + (string)pkg.buf + "</p>";
+            if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
         }
 
         return 0;
@@ -338,14 +337,22 @@ int post(string event, int body_size){
         string name = (string) buf;
         res = name.find("=");
         name = name.substr(res+1);
-        //send 2 server
+
+        package pkg(ADD, name);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+        
         return get("/homepage.html");
     }
     if(event=="/del_friend"){
         string name = (string) buf;
         res = name.find("=");
         name = name.substr(res+1);
-        //send 2 server
+
+        package pkg(DEL, name);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+        
         return get("/homepage.html");
     }
     if(event=="/chat_with"){
