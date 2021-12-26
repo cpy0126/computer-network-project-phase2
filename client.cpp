@@ -89,8 +89,6 @@ void set_response(package *now,int type,int bufferSize,char *buffer,char *sender
 
 void send2server(int type,int buf_size,char *buf,char *sender,char *recver);
 
-void recv_server(int type,int buf_size,char *buf,char *sender,char *recver,package messege);
-
 int file_select(const struct dirent *entry);
 
 void get_data(char *buffer,char *data);
@@ -292,8 +290,11 @@ int handle_http(){
             strcat(path,name);
             strcat(path,"/chat");
             chatlog=open(path,O_RDWR|O_APPEND);
-            if(chatlog<0)
+            if(chatlog<0){
                 perror("Open chat failed");
+                send_homepage();
+                return 1;
+            }
             req.chatfd=chatlog;
             char latest30[200000];
             set_latest(req.chatfd,30,latest30);
@@ -419,7 +420,12 @@ void get_data(char *buffer,char *data){
     }
     tmp++;
     char *name=strstr(tmp,"=");name++;
-    strncpy(data,name,strlen(name));
+    int len=strlen(name);
+    strncpy(data,name,len);
+    for(int a=0;a<len;a++){
+        if(data[a]=='+')
+            data[a]=' ';
+    }
 }
 
 // send homepage.html to browser
