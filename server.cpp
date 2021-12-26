@@ -292,9 +292,7 @@ int main(int argc, char* argv[]){
                     read(fd,&tmp,sizeof(package));
                     send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
                 }
-                package tmp;
-                tmp.type=HIS;
-                send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
+                send(requestP[conn_fd].conn_fd,&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
                 close(fd);
             }
         }
