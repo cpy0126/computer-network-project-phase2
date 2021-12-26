@@ -371,6 +371,9 @@ int post(string event, int body_size){
         }
         return get("/homepage.html", 0);
     }
+    if(event=="/homepage"){
+        return get("/homepage.html", 0);
+    }
     if(event=="/send_message"){
         string content = (string) buf;
         res = content.find("=");
@@ -380,16 +383,13 @@ int post(string event, int body_size){
         if(write_package(pkg)<0) return -1;
         if(read_package(pkg)<0) return -1;
 
-        return get("/chatroom.html", 0);
+        event = "/update";
     }
     if(event=="/send_image"){
         //read buf and then send 2 server
     }
     if(event=="/send_file"){
         //read buf and then send 2 server
-    }
-    if(event=="/homepage"){
-        return get("/homepage.html", 0);
     }
     if(event=="/view_history" || event=="/update"){
         string tmp = "30";
