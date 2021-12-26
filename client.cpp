@@ -75,15 +75,23 @@ int index();
 int get(string path, int extra=0);
 int post(string event, int body_size=0);
 
-int handle_package(package &pkg){
+int read_package(package &pkg){
     int tmp = 0, res;
-    while(1){
+    while(tmp!=sizeof(package)){
         while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
             if(res<0 && errno==EAGAIN) continue;
             return -1;
         }
         tmp += res;
-        if(tmp==sizeof(package)) break;
+    }
+    return 0;
+}
+
+int write_package(package &pkg){
+    int res;
+    while((res = write(sock_fd, &pkg, sizeof(package)))<0){
+        if(res<0 && errno==EAGAIN) continue;
+        return -1;
     }
     return 0;
 }
@@ -228,7 +236,7 @@ int index(){
         close(file_fd);
         return -1;
     }
-    while(1){
+    while(filesize>0){
         while((res = read(file_fd, buf, filesize))<=0){
             if(res<0 && errno==EAGAIN) continue;
             break;
@@ -238,7 +246,6 @@ int index(){
             break;
         }
         filesize -= res;
-        if(filesize==0) break;
     }
     close(file_fd);
     if(res<0) return -1;
@@ -268,7 +275,7 @@ int get(string path, int extra){
         close(file_fd);
         return -1;
     }
-    while(1){
+    while(filesize>0){
         while((res = read(file_fd, buf, filesize))<=0){
             if(res<0 && errno==EAGAIN) continue;
             close(file_fd);
@@ -280,7 +287,6 @@ int get(string path, int extra){
             return -1;
         }
         filesize -= res;
-        if(filesize==0) break;
     }
     close(file_fd);
     return 0;
@@ -292,42 +298,53 @@ int post(string event, int body_size){
         string name = (string) buf;
         res = name.find("=");
         name = name.substr(res+1);
+
+        //check username
         for(int i=0;i<name.length();++i){
             if(isalnum(name[i])) continue;
             logflag = -1;
             return index();
         }
+
         package pkg(LOGIN, name);
-        while((res = write(sock_fd, &pkg, sizeof(package)))<0){
-            if(res<0 && errno==EAGAIN) continue;
-            return -1;
-        }
-        if(handle_package(pkg)<0) return -1;
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+
         if(((string)pkg.buf)=="Succeeed") logflag = 1;
         else logflag = -1;
+
         return index();
     }
     if(event=="/list_friend"){
-        //extra = friend_list_size recv from server
-        int extra = 0;
+        package pkg;
+        pkg.type = LIST;
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+
+        int extra = atoi(pkg.buf);
         get("/homepage.html",extra);
-        /*
+
+        string content;
         while(extra>0){
-            //need to check connection with server
-            res = read(cli_fd, buf, extra);
-            if(res<0 || write(cli_fd, buf, res)<0) return -1;
-            extra -= res;
+            if(read_package(pkg)<0) return -1;
+            content = "<p>" + (string)pkg.buf + "</p>";
+            if(write(cli_fd, content.c_str(), content.length())<0) return -1;
+            extra -= content.length();
         }
-        */
+
         return 0;
     }
     if(event=="/add_friend"){
         string name = (string) buf;
+        res = name.find("=");
+        name = name.substr(res+1);
         //send 2 server
         return get("/homepage.html");
     }
     if(event=="/del_friend"){
         string name = (string) buf;
+        res = name.find("=");
+        name = name.substr(res+1);
         //send 2 server
         return get("/homepage.html");
     }
