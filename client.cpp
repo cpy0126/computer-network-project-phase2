@@ -37,20 +37,34 @@ string header404 ="\
     Connection: Closed\r\n\r\n\
     <html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center>\
     <hr><center>nginx/0.8.54</center></body></html>";
-string used = "<html><h2>Username used, please choose another</h2></html>", recver;
+string used = "<html><h2>Username used or illegal, please choose another</h2></html>", recver;
 
 struct package{
     int type, buf_size;
-    char buf[2048], sender[128], recver[128];
+    char buf[2048], sender[64], recver[64];
     time_t Time;
     package(){
         type = buf_size = 0;
         memset(buf, 0, sizeof(buf));
-        // memset(sender, 0, sizeof(sender));
-        // memset(recver, 0, sizeof(recver));
+        memset(sender, 0, sizeof(sender));
+        memset(recver, 0, sizeof(recver));
         Time = time(NULL);
     }
-} package;
+    package(int _type, string& buffer){
+        package();
+        type = _type;
+        buf_size = buffer.length();
+        memcpy(buf, buffer.c_str(), sizeof(buffer));
+    }
+    package(int _type, string& buffer, string& _sender, string& _recver){
+        package();
+        type = _type;
+        buf_size = buffer.length();
+        memcpy(buf, buffer.c_str(), sizeof(buffer));
+        memcpy(sender, _sender.c_str(), sizeof(_sender));
+        memcpy(recver, _recver.c_str(), sizeof(_recver));
+    }
+};
 
 char buf[1000000],head_buf[1000];
 int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
@@ -63,7 +77,7 @@ int post(string event, int body_size=0);
 int handle_http(){
     int res, body_size = 0;
     memset(head_buf, 0, sizeof(head_buf));
-    headsize = 0;
+    headsize = bufsize = 0;
     char cur = '\0', prev = '\0';
     string shead, method, reqpath;
     while(1){
@@ -96,6 +110,7 @@ int handle_http(){
         res = shead.find("\r\n");
         body_size = stoi(shead.substr(16,res));
         if(reqpath=="/send_image" || reqpath=="/send_file") return post(reqpath, body_size);
+        memset(buf, 0, sizeof(char)*(body_size+1));
         while(1){
             //need to check connection with server
             if((res = read(cli_fd, buf+bufsize, body_size))<0) continue;
@@ -146,10 +161,8 @@ int main(int argc, char* argv[]){
     httpaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     //TCP client
-    /*
     if((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) ERR("socket()")
     if(connect(sock_fd, (struct sockaddr*) &servaddr, sizeof(servaddr)) < 0) ERR("connect()")
-    */
 
     //HTTP server
     if((http_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) ERR("socket()")
@@ -160,6 +173,7 @@ int main(int argc, char* argv[]){
 
     while(1){
         cli_fd = -1;
+        logflag = 0;
         int clilen = sizeof(cliaddr);
         if((cli_fd = accept(http_fd, (struct sockaddr*) &cliaddr, (socklen_t*) &clilen)) < 0) continue;
         
@@ -173,7 +187,10 @@ int main(int argc, char* argv[]){
                 if(handle_server()<0) break;
             */
             if(FD_ISSET(cli_fd, &read_OK))
-                if(handle_http()<0) break;
+                if(handle_http()<0){
+                    close(cli_fd);
+                    break;
+                }
         }
     }
 }
@@ -182,7 +199,8 @@ int index(){
     if(logflag==1) return get((string)"/homepage.html");
     int file_fd = open("./template/index.html", O_RDONLY), res;
     string header = "text/html";
-    if(file_fd<0) return -1;
+    if(file_fd<0)
+        return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
     filesize = lseek(file_fd, 0, SEEK_END);
     if(filesize<0){
         close(file_fd);
@@ -191,20 +209,30 @@ int index(){
     lseek(file_fd, 0, SEEK_SET);
     if(logflag==-1) header = set_header(filesize+used.length(), header);
     else header = set_header(filesize, header);
-    if(write(cli_fd, header.c_str(), header.length())<0){
+    while((res = write(cli_fd, header.c_str(), header.length()))<0){
+        if(res<0 && errno==EAGAIN) continue;
         close(file_fd);
         return -1;
     }
-    while((res = read(file_fd, buf, filesize)) > 0){
-        if(write(cli_fd, buf, res)<0){
-            close(file_fd);
-            return -1;
+    while(1){
+        while((res = read(file_fd, buf, filesize))<=0){
+            if(res<0 && errno==EAGAIN) continue;
+            break;
+        }
+        while((res = write(cli_fd, buf, res))<0){
+            if(res<0 && errno==EAGAIN) continue;
+            break;
         }
         filesize -= res;
+        if(filesize==0) break;
     }
     close(file_fd);
     if(res<0) return -1;
-    if(logflag<0) if(write(cli_fd, used.c_str(), used.length())<0) return -1;
+    if(logflag<0)
+        while((res = write(cli_fd, used.c_str(), used.length()))<0){
+            if(res<0 && errno==EAGAIN) continue;
+            return -1;
+        }
     return 0;
 }
 
@@ -226,23 +254,51 @@ int get(string path, int extra){
         close(file_fd);
         return -1;
     }
-    while((res = read(file_fd, buf, filesize)) > 0){
-        if(write(cli_fd, buf, res)<0){
+    while(1){
+        while((res = read(file_fd, buf, filesize))<=0){
+            if(res<0 && errno==EAGAIN) continue;
+            close(file_fd);
+            return -1;
+        }
+        while((res = write(cli_fd, buf, res))<0){
+            if(res<0 && errno==EAGAIN) continue;
             close(file_fd);
             return -1;
         }
         filesize -= res;
+        if(filesize==0) break;
     }
     close(file_fd);
-    if(res<0) return -1;
     return 0;
 }
 
 int post(string event, int body_size){
+    int res;
     if(event=="/username"){
         string name = (string) buf;
-        //logflag = send name 2 server to check valid(1) or not(-1)
-        logflag = 1;
+        res = name.find("=");
+        name = name.substr(res+1);
+        for(int i=0;i<name.length();++i){
+            if(isalnum(name[i])) continue;
+            logflag = -1;
+            return index();
+        }
+        package pkg(LOGIN, name);
+        while((res = write(sock_fd, &pkg, sizeof(package)))<0){
+            if(res<0 && errno==EAGAIN) continue;
+            return -1;
+        }
+        bufsize = 0;
+        while(1){
+            while((res = read(sock_fd, &pkg+bufsize, sizeof(package)-bufsize))<=0){
+                if(res<0 && errno==EAGAIN) continue;
+                return -1;
+            }
+            bufsize += res;
+            if(bufsize==sizeof(package)) break;
+        }
+        if(((string)pkg.buf)=="Succeeed") logflag = 1;
+        else logflag = -1;
         return index();
     }
     if(event=="/list_friend"){
