@@ -21,6 +21,7 @@ using namespace std;
 #define LOGIN 400
 #define ADD 500
 #define DEL 600
+#define LIST 700
 
 string set_header(long long int content_len, string &filetype){
     string header;
@@ -73,6 +74,19 @@ long long int filesize;
 int index();
 int get(string path, int extra=0);
 int post(string event, int body_size=0);
+
+int handle_package(package &pkg){
+    int tmp = 0, res;
+    while(1){
+        while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
+            if(res<0 && errno==EAGAIN) continue;
+            return -1;
+        }
+        tmp += res;
+        if(tmp==sizeof(package)) break;
+    }
+    return 0;
+}
 
 int handle_http(){
     int res, body_size = 0;
@@ -288,15 +302,7 @@ int post(string event, int body_size){
             if(res<0 && errno==EAGAIN) continue;
             return -1;
         }
-        bufsize = 0;
-        while(1){
-            while((res = read(sock_fd, &pkg+bufsize, sizeof(package)-bufsize))<=0){
-                if(res<0 && errno==EAGAIN) continue;
-                return -1;
-            }
-            bufsize += res;
-            if(bufsize==sizeof(package)) break;
-        }
+        if(handle_package(pkg)<0) return -1;
         if(((string)pkg.buf)=="Succeeed") logflag = 1;
         else logflag = -1;
         return index();
