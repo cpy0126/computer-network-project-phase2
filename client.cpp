@@ -139,7 +139,7 @@ int handle_http(){
             bufsize += res;
             body_size -= res;
         }
-        return post(reqpath, bodysize);
+        return post(reqpath, body_size);
     }
     return -1;
 }
