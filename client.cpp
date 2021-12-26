@@ -72,8 +72,8 @@ int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
 long long int filesize;
 
 int index();
-int get(string path, int extra=0);
-int post(string event, int body_size=0);
+int get(string path, int extra);
+int post(string event, int body_size);
 
 int read_package(package &pkg){
     int tmp = 0, res;
@@ -120,7 +120,7 @@ int handle_http(){
     reqpath = reqpath.substr(0,res);
     if(method=="GET"){
         if(reqpath=="/"){
-            if(logflag==1) return get("/homepage.html");
+            if(logflag==1) return get("/homepage.html", 0);
             return index();
         }
         else
@@ -139,7 +139,7 @@ int handle_http(){
             bufsize += res;
             body_size -= res;
         }
-        return post(reqpath);
+        return post(reqpath, bodysize);
     }
     return -1;
 }
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]){
 }
 
 int index(){
-    if(logflag==1) return get("/homepage.html");
+    if(logflag==1) return get("/homepage.html", 0);
     int file_fd = open("./template/index.html", O_RDONLY), res;
     string header = "text/html";
     if(file_fd<0)
@@ -341,7 +341,7 @@ int post(string event, int body_size){
         if(write_package(pkg)<0) return -1;
         if(read_package(pkg)<0) return -1;
         
-        return get("/homepage.html");
+        return get("/homepage.html", 0);
     }
     if(event=="/del_friend"){
         string name = (string) buf;
@@ -352,11 +352,11 @@ int post(string event, int body_size){
         if(write_package(pkg)<0) return -1;
         if(read_package(pkg)<0) return -1;
         
-        return get("/homepage.html");
+        return get("/homepage.html", 0);
     }
     if(event=="/chat_with"){
         recver = (string) buf;
-        return get("/chatroom.html");
+        return get("/chatroom.html", 0);
     }
     if(event=="/send_message"){
         //send buf 2 server
@@ -368,7 +368,7 @@ int post(string event, int body_size){
         //read buf and then send 2 server
     }
     if(event=="/homepage"){
-        return get("/homepage.html");
+        return get("/homepage.html", 0);
     }
     if(event=="/view_history" || event=="/update"){
         int tmp;
