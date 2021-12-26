@@ -23,6 +23,8 @@ using namespace std;
 #define ADD 500
 #define DEL 600
 #define LIST 700
+#define CHECK 800
+#define HIS 900
 
 
 #define ERR_EXIT(a) do { perror(a); exit(1); } while(0)
@@ -153,14 +155,14 @@ int main(int argc, char* argv[]){
                 package response;
                 string new_user=string(requestP[conn_fd].now.buf);
                 if(user_names.find(new_user)!=user_names.end()){
-                    set_response(&response,LOGIN,sizeof(failed),failed,NULL,NULL);
-                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),MSG_NOSIGNAL);
+                    set_response(&response,LOGIN,strlen(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     continue;
                 }
                 user_names[new_user]=requestP[conn_fd].conn_fd;
                 mkdir(new_user.c_str(),0777);
-                set_response(&response,LOGIN,sizeof(succeed),succeed,NULL,NULL);
-                send(requestP[conn_fd].conn_fd,&response,sizeof(response),MSG_NOSIGNAL);
+                set_response(&response,LOGIN,strlen(succeed),succeed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 requestP[conn_fd].user_name=new_user;
                 continue;
             }
@@ -168,8 +170,8 @@ int main(int argc, char* argv[]){
                 package response;
                 string new_friend = string(requestP[conn_fd].now.buf);
                 if(user_names.find(new_friend)==user_names.end()){
-                    set_response(&response,ADD,sizeof(failed),failed,NULL,NULL);
-                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),MSG_NOSIGNAL);
+                    set_response(&response,ADD,strlen(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     continue;
                 }
                 
@@ -183,15 +185,15 @@ int main(int argc, char* argv[]){
                 friend_name2=friend_name2+"/chat";
                 creat(friend_name2.c_str(),0777);
 
-                set_response(&response,ADD,sizeof(succeed),succeed,NULL,NULL);
-                send(requestP[conn_fd].conn_fd,&response,sizeof(response),MSG_NOSIGNAL);
+                set_response(&response,ADD,strlen(succeed),succeed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
             }
             else if(requestP[conn_fd].now.type==DEL){    // Deleteing friend
                 package response;
                 string new_friend = string(requestP[conn_fd].now.buf);
                 if(user_names.find(new_friend)==user_names.end()){
-                    set_response(&response,DEL,sizeof(failed),failed,NULL,NULL);
-                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),MSG_NOSIGNAL);
+                    set_response(&response,DEL,strlen(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     continue;
                 }
                 
@@ -205,15 +207,15 @@ int main(int argc, char* argv[]){
                 remove(tmp2.c_str());
                 rmdir(friend_name2.c_str());
 
-                set_response(&response,DEL,sizeof(succeed),succeed,NULL,NULL);
-                send(requestP[conn_fd].conn_fd,&response,sizeof(response),MSG_NOSIGNAL);
+                set_response(&response,DEL,strlen(succeed),succeed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
             }
             else if(requestP[conn_fd].now.type==MSS){    // receve message
                 package response;
                 string new_friend = string(requestP[conn_fd].now.recver);
                 if(user_names.find(new_friend)==user_names.end()){
-                    set_response(&response,MSS,sizeof(failed),failed,NULL,NULL);
-                    send(requestP[conn_fd].conn_fd,&response,sizeof(response),MSG_NOSIGNAL);
+                    set_response(&response,MSS,strlen(failed),failed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     continue;
                 }
                 string friend_name="./";
@@ -262,7 +264,41 @@ int main(int argc, char* argv[]){
                 }
                 free(user_file);
             }
-
+            else if(requestP[conn_fd].now.type==CHECK){
+                string friend_name=(string)(requestP[conn_fd].now.buf);
+                struct dirent **user_file;
+                string now_user="./"+requestP[conn_fd].user_name;
+                int n=scandir(now_user.c_str(), &user_file, file_select, alphasort);
+                int got=0;
+                for(int i=0;i<n;i++){
+                    string f_name=(string)(user_file[i]->d_name);
+                    if(f_name==friend_name) got=1;
+                    free(user_file[i]);
+                }
+                free(user_file);
+                package response;
+                if(got)
+                    set_response(&response,CHECK,strlen(succeed),succeed,NULL,NULL);
+                else
+                    set_response(&response,CHECK,strlen(failed),failed,NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
+            }
+            else if(requestP[conn_fd].now.type==HIS){
+                int n=atoi(requestP[conn_fd].now.buf);
+                string friend_path="./"+requestP[conn_fd].user_name+"/"+string(requestP[conn_fd].now.recver)+"/chat";
+                int fd=open(friend_path.c_str(),O_RDONLY);
+                int his_size=lseek(fd,0,SEEK_END)/sizeof(package);
+                lseek(fd,-min(his_size,n),SEEK_END);
+                for(int a=0;a<min(his_size,n);a++){
+                    package tmp;
+                    read(fd,&tmp,sizeof(package));
+                    send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
+                }
+                package tmp;
+                tmp.type=HIS;
+                send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
+                close(fd);
+            }
         }
 
 
