@@ -231,7 +231,7 @@ int main(int argc, char* argv[]){
                 close(you);
 
                 set_response(&response,MSS,strlen(succeed),succeed,NULL,NULL);
-                send(requestP[conn_fd].conn_fd,&response,sizeof(package),0);
+                send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 // send(user_names[new_friend],&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
             }
             else if(requestP[conn_fd].now.type==IMG){    // receve image
