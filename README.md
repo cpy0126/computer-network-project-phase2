@@ -9,17 +9,14 @@
 #define MSS 300
 
 struct package{
-    int type: SEND, RECV, CMD
+    int type: SEND, RECV, LOGIN, ADD, DEL
     time_t Time
-    int content: IMG, FILE, MSS
     char buf[2048]
-    char sender[128]
-    char recver[128]
+    std::string sender
+    std::string recver
     int buf_size
 }
 ```
-
-
 
 ```cpp
 #include<time.h>
@@ -30,3 +27,7 @@ local_time(*time_t) //change time_t to struct tm
 ctime(*time_t) //change time_t to char*
 asctime(struct *tm) //change struct tm to char*
 ```
+
+- [ ] Check html input size
+
+- [ ] Connect Client and Server (detect connection status)

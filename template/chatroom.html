@@ -1,0 +1,26 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+   <title>Welcome to Chatroom</title>
+</head>
+<body>
+    <h1> Chatroom</h1>
+    <form action="/homepage" method="post" style="float:left;">
+        <input type="submit" value="Back to homepage">
+    </form>
+    <form action="/update" method="post">
+        <input type="submit" value="Update chat history">
+    </form>
+    <form action="/view_history" method="post">
+        <label >View chat history, up to latest 999 messege</label>
+        <input type="text" id="view_history" name="view_history" maxlength="3">
+        <input type="submit" value="View chat history">
+    </form><br>
+    <form action="/send_message" method="post">
+        <label >Enter your message</label>
+        <input type="text" id="message" name="message" maxlength="256">
+        <input type="submit" value="Enter">
+    </form><br>
+    <!--/send_image and /send_file need to detect size-->
+</body>
+</html>
