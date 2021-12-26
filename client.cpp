@@ -57,15 +57,15 @@ struct package{
         package();
         type = _type;
         buf_size = buffer.length();
-        memcpy(buf, buffer.c_str(), sizeof(buffer));
+        memcpy(buf, buffer.c_str(), sizeof(&buffer));
     }
     package(int _type, string& buffer, string& _sender, string& _recver){
         package();
         type = _type;
         buf_size = buffer.length();
-        memcpy(buf, buffer.c_str(), sizeof(buffer));
-        memcpy(sender, _sender.c_str(), sizeof(_sender));
-        memcpy(recver, _recver.c_str(), sizeof(_recver));
+        memcpy(buf, buffer.c_str(), sizeof(&buffer));
+        memcpy(sender, _sender.c_str(), sizeof(&_sender));
+        memcpy(recver, _recver.c_str(), sizeof(&_recver));
     }
 };
 
@@ -377,7 +377,10 @@ int post(string event, int body_size){
         content = content.substr(res+1);
 
         package pkg(MSS, content, user, target);
-        return write_package(pkg);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+
+        return get("/chatroom.html", 0);
     }
     if(event=="/send_image"){
         //read buf and then send 2 server
@@ -409,10 +412,11 @@ int post(string event, int body_size){
             space.push_back(pkg);
             extra += ((string)pkg.sender).length() + pkg.buf_size + 10;
         }
-        get("/chatroom.html",extra);
 
-        for(int i=0;i<latest;++i){
-            tmp = "<p>" + (string)space[i].sender + " : \0" + (string)space[i].buf + "</p>";
+        if(get("/chatroom.html",extra)<0) return -1;
+
+        for(int i=0;i<((int)space.size());++i){
+            tmp = "<p>" + (string)space[i].sender + " : " + (string)space[i].buf + "</p>";
             if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
         }
         return 0;
