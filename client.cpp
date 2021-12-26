@@ -133,11 +133,12 @@ int handle_http(){
         body_size = stoi(shead.substr(16,res));
         if(reqpath=="/send_image" || reqpath=="/send_file") return post(reqpath, body_size);
         memset(buf, 0, sizeof(char)*(body_size+1));
-        while(body_size>0){
+        while(1){
             //need to check connection with server
             if((res = read(cli_fd, buf+bufsize, body_size))<0) continue;
             bufsize += res;
             body_size -= res;
+            if(body_size==0) break;
         }
         return post(reqpath);
     }
