@@ -4,7 +4,6 @@
 #include<iostream>
 #include<memory.h>
 #include<netinet/in.h>
-#include<set>
 #include<stdio.h>
 #include<sys/types.h>
 #include<sys/socket.h>
@@ -12,6 +11,7 @@
 #include<time.h>
 #include<unistd.h>
 #include<string.h>
+#include<vector>
 using namespace std;
 
 #define ERR(a) {perror(a); return EXIT_FAILURE;}
@@ -22,6 +22,8 @@ using namespace std;
 #define ADD 500
 #define DEL 600
 #define LIST 700
+#define CHECK 800
+#define HIS 900
 
 string set_header(long long int content_len, string &filetype){
     string header;
@@ -38,7 +40,7 @@ string header404 ="\
     Connection: Closed\r\n\r\n\
     <html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center>\
     <hr><center>nginx/0.8.54</center></body></html>";
-string used = "<html><h2>Username used or illegal, please choose another</h2></html>", recver;
+string used = "<html><h2>Username used or illegal, please choose another</h2></html>", user, target;
 
 struct package{
     int type, buf_size;
@@ -307,7 +309,7 @@ int post(string event, int body_size){
         if(write_package(pkg)<0) return -1;
         if(read_package(pkg)<0) return -1;
 
-        if(((string)pkg.buf)=="Succeeed") logflag = 1;
+        if(((string)pkg.buf)=="Succeeed") logflag = 1, user = name;
         else logflag = -1;
 
         return index();
@@ -355,11 +357,25 @@ int post(string event, int body_size){
         return get("/homepage.html", 0);
     }
     if(event=="/chat_with"){
-        recver = (string) buf;
-        return get("/chatroom.html", 0);
+        string name = (string) buf;
+
+        package pkg(CHECK, name);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+        
+        if(((string)pkg.buf)=="Succeeed"){
+            target = name;
+            return get("/chatroom.html", 0);
+        }
+        return get("/homepage.html", 0);
     }
     if(event=="/send_message"){
-        //send buf 2 server
+        string content = (string) buf;
+        res = content.find("=");
+        content = content.substr(res+1);
+
+        package pkg(MSS, content, user, target);
+        return write_package(pkg);
     }
     if(event=="/send_image"){
         //read buf and then send 2 server
@@ -371,20 +387,33 @@ int post(string event, int body_size){
         return get("/homepage.html", 0);
     }
     if(event=="/view_history" || event=="/update"){
-        int tmp;
-        if(event=="/update") tmp = 20;
-        else tmp = atoi(buf);
-        //extra = history_size recv from server
-        int extra = 0;
-        get("/chatroom.html",extra);
-        /*
-        while(extra>0){
-            //need to check connection with server
-            res = read(cli_fd, buf, extra);
-            if(res<0 || write(cli_fd, buf, res)<0) return -1;
-            extra -= res;
+        string tmp = "30";
+        if(event=="/view_history"){
+            tmp = (string) buf;
+            res = tmp.find("=");
+            tmp = tmp.substr(res+1);
         }
-        */
+        
+        int latest = stoi(tmp);
+        package pkg(HIS, tmp, user, target);
+        if(write_package(pkg)<0) return -1;
+        int extra = 0;
+        //extra = history_size recv from server
+
+        vector<struct package> space;
+        while(1){
+            if(read_package(pkg)<0) return -1;
+            if(pkg.type==HIS) break;
+            space.push_back(pkg);
+            extra += ((string)pkg.sender).length() + pkg.buf_size + 10;
+        }
+        get("/chatroom.html",extra);
+
+        for(int i=0;i<latest;++i){
+            tmp = "<p>" + (string)space[i].sender + " : \0" + (string)space[i].buf + "</p>";
+            if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
+        }
         return 0;
     }
+    return -1;
 }
