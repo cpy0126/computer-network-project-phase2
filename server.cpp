@@ -222,7 +222,11 @@ int main(int argc, char* argv[]){
                 int me=open(friend_name.c_str(),O_WRONLY|O_APPEND);
                 write(me,&(requestP[conn_fd].now),sizeof(package));
                 close(me);
-
+                if(requestP[conn_fd].user_name==new_friend){
+                    set_response(&response,MSS,strlen(succeed),succeed,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
+                    continue;
+                }
                 string friend_name2="./"+new_friend+"/"+requestP[conn_fd].user_name+"/chat";
                 int you=open(friend_name2.c_str(),O_WRONLY|O_APPEND);
                 write(you,&(requestP[conn_fd].now),sizeof(package));
