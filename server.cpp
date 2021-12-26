@@ -286,14 +286,14 @@ int main(int argc, char* argv[]){
                 string friend_path="./"+requestP[conn_fd].user_name+"/"+string(requestP[conn_fd].now.recver)+"/chat";
                 int fd=open(friend_path.c_str(),O_RDONLY);
                 int his_size=lseek(fd,0,SEEK_END)/sizeof(package);
-                lseek(fd,-min(his_size,n),SEEK_END);
+                lseek(fd,-min(his_size,n)*sizeof(package),SEEK_END);
                 for(int a=0;a<min(his_size,n);a++){
                     package tmp;
                     read(fd,&tmp,sizeof(package));
                     send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
                 }
-                send(requestP[conn_fd].conn_fd,&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
                 close(fd);
+                send(requestP[conn_fd].conn_fd,&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
             }
         }
 
