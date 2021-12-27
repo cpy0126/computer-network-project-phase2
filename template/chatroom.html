@@ -16,11 +16,23 @@
         <input type="text" id="view_history" name="view_history" maxlength="3">
         <input type="submit" value="View chat history">
     </form><br>
+    <!--/send_image and /send_file need to detect size-->
+    <form action="/send_image" method="post" >
+        <label >Upload your image</label>
+        <input type="file" name="image" value="send_image" id="send_image" accept="image/*">
+        <input type="submit" value="Upload">
+    </form>
+    <form action="/send_file" method="post" >
+        <label >Upload your file  </label>
+        <input type="file" name="file" value="send_file" id="send_file">
+        <input type="submit" value="Upload">
+    </form>
+    <!------------------------------------------------------->
     <form action="/send_message" method="post">
         <label >Enter your message</label>
         <input type="text" id="message" name="message" maxlength="256">
         <input type="submit" value="Enter">
-    </form><br>
-    <!--/send_image and /send_file need to detect size-->
+    </form>
+    
 </body>
 </html>
