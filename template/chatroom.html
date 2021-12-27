@@ -17,12 +17,12 @@
         <input type="submit" value="View chat history">
     </form><br>
     <!--/send_image and /send_file need to detect size-->
-    <form action="/send_image" method="post" >
+    <form action="/send_image" method="post" enctype="multipart/form-data">
         <label >Upload your image</label>
         <input type="file" name="image" value="send_image" id="send_image" accept="image/*">
         <input type="submit" value="Upload">
     </form>
-    <form action="/send_file" method="post" >
+    <form action="/send_file" method="post" enctype="multipart/form-data">
         <label >Upload your file  </label>
         <input type="file" name="file" value="send_file" id="send_file">
         <input type="submit" value="Upload">
