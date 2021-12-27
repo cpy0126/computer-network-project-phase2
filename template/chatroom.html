@@ -28,7 +28,7 @@
         <input type="submit" value="Upload">
     </form>
     <!------------------------------------------------------->
-    <form action="/send_message" method="post">
+    <form action="/send_message" method="post" enctype="multipart/form-data">
         <label >Enter your message</label>
         <input type="text" id="message" name="message" maxlength="256">
         <input type="submit" value="Enter">
