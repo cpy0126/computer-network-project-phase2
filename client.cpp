@@ -4,7 +4,6 @@
 #include<iostream>
 #include<memory.h>
 #include<netinet/in.h>
-#include<set>
 #include<stdio.h>
 #include<sys/types.h>
 #include<sys/socket.h>
@@ -12,580 +11,422 @@
 #include<time.h>
 #include<unistd.h>
 #include<string.h>
+#include<vector>
 using namespace std;
 
-#define ERR(a) {perror(a): return EXIT_FAILURE;}
+#define ERR(a) {perror(a); return EXIT_FAILURE;}
 #define IMG 100
 #define FILES 200
 #define MSS 300
 #define LOGIN 400
 #define ADD 500
 #define DEL 600
-#define SERVER_STRING "Server: jdbhttpd/0.1.0\r\n"
+#define LIST 700
+#define CHECK 800
+#define HIS 900
 
+string set_header(long long int content_len, string &filetype){
+    string header;
+    header = "HTTP/1.1 200 OK\r\nServer: jdbhttpd/0.1.0\r\nContent-Length: " + to_string(content_len);
+    header = header + "\r\nContent-Type: " + filetype + "\r\nConnection: keep-alive\r\n\r\n";
+    return header;
+}
 
-#define ERR_EXIT(a) do { perror(a); exit(1); } while(0)
+string header404 ="\
+    HTTP/1.1 404 Bad Request\r\n\
+    Server: jdbhttpd/0.1.0\r\n\
+    Content-Length: 169\r\n\
+    Content-Type: text/html\r\n\
+    Connection: Closed\r\n\r\n\
+    <html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center>\
+    <hr><center>nginx/0.8.54</center></body></html>";
+string used = "<html><h2>Username used or illegal, please choose another</h2></html>", user, target;
 
-typedef struct server{
-    char hostname[512];  // server's hostname
-    unsigned short port;  // port to listen
-    int conn_fd;  // fd to wait for a new connection
-} server;
-
-typedef struct package{
+struct package{
     int type, buf_size;
-    char buf[2048];
-    char sender[64];
-    char recver[64];
+    char buf[2048], sender[64], recver[64];
     time_t Time;
     package(){
         type = buf_size = 0;
         memset(buf, 0, sizeof(buf));
-        // memset(sender, 0, sizeof(sender));
-        // memset(recver, 0, sizeof(recver));
+        memset(sender, 0, sizeof(sender));
+        memset(recver, 0, sizeof(recver));
         Time = time(NULL);
     }
-} package;
-
-typedef struct request{
-    int conn_fd;  // fd to talk with client
-    int chatfd;
-    int filesize;
-    char username[64];
-    char chat_friend[64];
-    // int status;     
-    // char buf[2048];  // data sent by/to client
-    package send;
-} request;
-
-server svr;
-request req;
-char succeed[16]="Succeeed";
-char failed[8]="Failed";
-
-int init_client(unsigned short port);
-
-void init_server(int port, char *ip);
-
-void init_request(request* reqP);
-
-void free_request(request* reqP);
-
-void get_method(char* buffer,char* method);
-
-void get_request_file(char* buffer,char* reqfile);
-
-int set_http_header(char *buf,int content_len,const char *filetype);
-
-void set_404_header(char *buf);
-
-int send_login(int wrong);
-
-int send_homepage();
-
-int handle_http();
-
-void set_response(package *now,int type,int bufferSize,char *buffer,char *sender,char *recver);
-
-void send2server(int type,int buf_size,char *buf,char *sender,char *recver);
-
-int file_select(const struct dirent *entry);
-
-void get_data(char *buffer,char *data);
-
-int check_username(char *tmp);
-
-void remove_friend(char *fri);
-
-int handle_server();
-
-void set_chatroom(char *buf,int len);
-
-void set_latest(int fd,int piece,char *buf);
-
-int main(int argc, char* argv[]){
-    if (argc != 3){
-        fprintf(stderr, "usage: %s [port]\n", argv[0]);
-        exit(1);
+    package(int _type, string& buffer){
+        package();
+        type = _type;
+        buf_size = buffer.length();
+        memcpy(buf, buffer.c_str(), sizeof(&buffer));
     }
-    mkdir("./client_dir", 0777);
-    chdir("./client_dir");
-    char ip[16];
-    char *cross=strstr(argv[1],":");*cross='\0';cross++;
-    strcpy(ip,argv[1]);
-    int svr_port=atoi(cross);
-    init_server(svr_port,ip);   //build connection with server
-    int listen_fd=init_client((unsigned short)atoi(argv[2]));   //create socket to listen to browser
-    fprintf(stderr, "Running \n");
-
-    while(1){
-        struct sockaddr_in cliaddr;
-        int clilen = sizeof(cliaddr);
-        // accept a new connection from browser
-        int conn_fd = accept(listen_fd, (struct sockaddr*)&cliaddr, (socklen_t*)&clilen);
-        if (conn_fd < 0){
-            ERR_EXIT("accept");
-        }
-        req.conn_fd=conn_fd;
-        fprintf(stderr, "\nstarting on %.80s, port %s connect fd %d\n", svr.hostname, argv[2],conn_fd);
-        
-        fd_set read_OK;
-        while(1){
-            FD_ZERO(&read_OK);
-            FD_SET(req.conn_fd, &read_OK);FD_SET(svr.conn_fd, &read_OK);
-            // select whether browser send request
-            select(10,&read_OK,NULL,NULL,NULL);
-            if(FD_ISSET(svr.conn_fd,&read_OK)){
-                if(!handle_server()){
-                    free_request(&req);
-                    break;
-                }  
-            }
-            if(FD_ISSET(req.conn_fd,&read_OK)){
-                if(!handle_http()){ // handle with http request
-                    free_request(&req);
-                    break;
-                }
-            }
-        }
-
-
+    package(int _type, string& buffer, string& _sender, string& _recver){
+        package();
+        type = _type;
+        buf_size = buffer.length();
+        memcpy(buf, buffer.c_str(), sizeof(&buffer));
+        memcpy(sender, _sender.c_str(), sizeof(&_sender));
+        memcpy(recver, _recver.c_str(), sizeof(&_recver));
     }
+};
 
+char buf[1000000],head_buf[1000];
+int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
+long long int filesize;
+
+int index();
+int get(string path, int extra);
+int post(string event, int body_size);
+
+int read_package(package &pkg){
+    int tmp = 0, res;
+    while(tmp!=sizeof(package)){
+        while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
+            if(res<0 && errno==EAGAIN) continue;
+            return -1;
+        }
+        tmp += res;
+    }
     return 0;
 }
 
-int handle_server(){
-    package got;
-    recv(svr.conn_fd,&got,sizeof(package),0);
-    if(got.type==ADD){
-        mkdir(got.buf,0777);
-        char path[128]="./";
-        strcat(path,got.buf);
-        strcat(path,"/chat");
-        creat(path,0777);
+int write_package(package &pkg){
+    int res;
+    while((res = write(sock_fd, &pkg, sizeof(package)))<0){
+        if(res<0 && errno==EAGAIN) continue;
+        return -1;
     }
-    else if(got.type==DEL){
-        remove_friend(got.buf);
-    }
-    else if(got.type==MSS){
-        char path[128]="./";
-        strcat(path,got.sender);
-        strcat(path,"/chat");
-        int fd=open(path,O_RDWR|O_APPEND);
-        if(fd<0){
-            perror("open file failed recv server");
-            fprintf(stderr,"path = %s\n",path);
-        }
-        write(fd,&got,sizeof(package));
-        close(fd);
-    }
-    return 1;
+    return 0;
 }
 
 int handle_http(){
-    char buffer[100000]="\0";
-    int get=recv(req.conn_fd, buffer, 100000, 0);
-    int sent=1;
-    // fprintf(stderr,"%s\n",buffer);
-    if(get<=0){
-        return 0;
+    int res, body_size = 0;
+    memset(head_buf, 0, sizeof(head_buf));
+    headsize = bufsize = 0;
+    char cur = '\0', prev = '\0';
+    string shead, method, reqpath;
+    while(1){
+        if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
+        if(!res) return -1;
+        cur = head_buf[headsize];
+        ++headsize;
+        if(prev=='\r' && cur=='\n' && headsize==2) break;
+        if(prev=='\r' && cur=='\n') shead+=(string)head_buf, headsize=0;
+        prev = cur;
     }
-    char method[8]="\0",reqfile[128]="\0";
-    get_method(buffer,method);
-    get_request_file(buffer,reqfile);
-    // deal with get request, such as first connection with client
-    if(strcmp(method,"GET")==0){    
-        if(!strcmp(reqfile,"/")){   // receive 
-            if(!send_login(0)){ 
-                ERR_EXIT("Wrong sending");
-                return 0;
-            }
-            return 1;
-        }   
-        else{
-            char buf[4096]="\0";
-            set_404_header(buf);
-            send(req.conn_fd,buf,sizeof(buf),0);
-            return 0;
+    res = shead.find(" ");
+    method = shead.substr(0,res);
+    shead = shead.substr(res+1);
+    res = shead.find(" ");
+    reqpath = shead.substr(0,res);
+    res = shead.find("?");
+    reqpath = reqpath.substr(0,res);
+    if(method=="GET"){
+        if(reqpath=="/"){
+            if(logflag==1) return get("/homepage.html", 0);
+            return index();
         }
+        else
+            return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
     }
-    else if(strcmp(method,"POST")==0){  //deal with post request
-        if(!strcmp(reqfile,"/username")){
-            char name[64]="\0";
-            get_data(buffer,name);
-            send2server(LOGIN,strlen(name),name,NULL,NULL);
-            package sent;
-            recv(svr.conn_fd,&sent,sizeof(package),0);
-            if(!strcmp(sent.buf,succeed)&&check_username(name)){
-                strcpy(req.username,name);
-                chdir("..");
-                rename("./client_dir",req.username);
-                chdir(req.username);
-                if(!send_homepage())
-                    return 0;
-            }
-            else{
-                if(!send_login(1))
-                    return 0;
-            }
+    if(method=="POST"){
+        res = shead.rfind("Content-Length: ");
+        shead = shead.substr(res);
+        res = shead.find("\r\n");
+        body_size = stoi(shead.substr(16,res));
+        if(reqpath=="/send_image" || reqpath=="/send_file") return post(reqpath, body_size);
+        memset(buf, 0, sizeof(char)*(body_size+1));
+        while(body_size>0){
+            //need to check connection with server
+            if((res = read(cli_fd, buf+bufsize, body_size))<0) continue;
+            bufsize += res;
+            body_size -= res;
         }
-        else if(!strcmp(reqfile,"/list_friend")){
-            struct dirent **user_file;
-            int n=scandir(".", &user_file, file_select, alphasort);
-            char response[4096]="\0";
-            char friend_list[3072]="\0";
-            int index=open("../template/homepage.html",O_RDONLY);
-            if(index<=0) perror("open fail");
-            int size=read(index,friend_list,2048);
-            if(size<=0) perror("read fail");
-            for(int i=0;i<n;i++){
-                char now[128]="\0";
-                strcat(now,"<p>");
-                strcat(now, user_file[i]->d_name);
-                strcat(now, "</p>");
-                strcat(friend_list, now);
-                size+=strlen(now);
-                free(user_file[i]);
-            }
-            free(user_file);
-            set_http_header(response,size,"text/html");
-            strcat(response,friend_list);
-            send(req.conn_fd,response,strlen(response),0);
-            return 1;
-        }
-        else if(!strcmp(reqfile,"/add_friend")){
-            char name[64]="\0";
-            get_data(buffer,name);
-            send2server(ADD,strlen(name),name,NULL,NULL);
-            package sent;
-            recv(svr.conn_fd,&sent,sizeof(package),0);
-            if(!send_homepage())
-                return 0;
-            if(!strcmp(sent.buf,succeed)){
-                mkdir(name,0777);
-                char path[128]="./";
-                strcat(path,name);
-                strcat(path,"/chat");
-                creat(path,0777);
-            }
-        }
-        else if(!strcmp(reqfile,"/del_friend")){
-            char name[64]="\0";
-            get_data(buffer,name);
-            send2server(DEL,strlen(name),name,NULL,NULL);
-            package sent;
-            recv(svr.conn_fd,&sent,sizeof(package),0);
-            if(!send_homepage())
-                return 0;
-            if(!strcmp(sent.buf,succeed)){
-                remove_friend(name);
-            }
-        }
-        else if(!strcmp(reqfile,"/chat_with")){
-            char name[64]="\0",path[256]="./";
-            get_data(buffer,name);
-            strncpy(req.chat_friend,name,64);
-            int chatlog;
-            strcat(path,name);
-            strcat(path,"/chat");
-            chatlog=open(path,O_RDWR|O_APPEND);
-            if(chatlog<0){
-                perror("Open chat failed");
-                send_homepage();
-                return 1;
-            }
-            req.chatfd=chatlog;
-            char latest30[200000];
-            set_latest(req.chatfd,30,latest30);
-            // fprintf(stderr,"DDDD\n");
-            char response[220000]="\0";
-            set_chatroom(response,strlen(latest30));
-            strcat(response,latest30);
-            send(req.conn_fd,response,strlen(response),0);
-        }
-        else if(!strcmp(reqfile,"/send_message")){
-            char messege[512]="\0";
-            get_data(buffer,messege);
-            package new_msg;
-            set_response(&new_msg,MSS,strlen(messege),messege,req.username,req.chat_friend);
-            write(req.chatfd,&new_msg,sizeof(package));
-            send2server(MSS,strlen(messege),messege,req.username,req.chat_friend);
-            
-            char latest30[200000]="\0";
-            set_latest(req.chatfd,30,latest30);
-            char response[220000]="\0";
-            set_chatroom(response,strlen(latest30));
-            strcat(response,latest30);
-            send(req.conn_fd,response,strlen(response),0);
-        }
-        else if(!strcmp(reqfile,"/homepage")){
-            close(req.chatfd);
-            req.chatfd=-1;
-            send_homepage();
-        }
-        else if(!strcmp(reqfile,"/view_history")){
-            char piece[64]="\0",path[256]="./";
-            get_data(buffer,piece);
-            char latest[200000]="\0";
-            set_latest(req.chatfd,atoi(piece),latest);
-            char response[220000]="\0";
-            set_chatroom(response,strlen(latest));
-            strcat(response,latest);
-            send(req.conn_fd,response,strlen(response),0);
-        }
-        else if(!strcmp(reqfile,"/update")){
-            char path[256]="./";
-            char latest[200000]="\0";
-            set_latest(req.chatfd,30,latest);
-            char response[220000]="\0";
-            set_chatroom(response,strlen(latest));
-            strcat(response,latest);
-            send(req.conn_fd,response,strlen(response),0);
-        }
-        else{
-            char buf[4096]="\0";
-            set_404_header(buf);
-            send(req.conn_fd,buf,sizeof(buf),0);
-            return 0;
-        }
+        return post(reqpath, body_size);
     }
-    else{   //deal with undefined behavior
-        char buf[4096]="\0";
-        set_404_header(buf);
-        send(req.conn_fd,buf,sizeof(buf),0);
-        return 0;
-    }
-    return 1;
+    return -1;
 }
 
-// get http request method
-void get_method(char* buffer,char* method){
-    strncpy(method,buffer,8);
-    char *space=strstr(method," ");
-    *space='\0';
-}
-
-// get http request's file (thing after method)
-void get_request_file(char* buffer,char* reqfile){
-    int idx=0;
-    char *space=strstr(buffer," ");space++;
-    while(*space!=' ')
-        reqfile[idx++]=*(space++);
-    reqfile[idx]='\0';
-}
-
-void send2server(int type,int buf_size,char *buf,char *sender,char *recver){
-    package sent;
-    sent.buf_size=buf_size;
-    sent.type=type;
-    memcpy(sent.buf,buf,buf_size);
-    if(sender!=NULL)
-        memcpy(sent.sender,sender,64);
-    if(recver!=NULL)
-        memcpy(sent.recver,recver,64);
-    send(svr.conn_fd,&sent,sizeof(package),0);
-}
-
-/* send index.html to browser
- * when wrong is True, ask user to enter name again*/
-int send_login(int wrong){
-    char buf[4096]="\0";
-    char index_buf[2048]="\0";
-    char used[128]="<html><h2>Username used, please choose another</h2></html>";
-    int index,size;
-    index=open("../template/index.html",O_RDONLY);
-    if(index<=0) perror("open fail");
-    size=read(index,index_buf,2048);
-    if(size<=0) perror("read fail");
+int main(int argc, char* argv[]){
     
-    if(wrong){
-        size+=strlen(used);
-        strcat(index_buf,used);
+    if(argc!=3){
+        cout<<"usage: [server] ip:port [browser] port (default=80)"<<endl;
+        return 1;
     }
-    set_http_header(buf,size,"text/html");
-    strcat(buf,index_buf);
-    int sent=send(req.conn_fd,buf,strlen(buf),MSG_NOSIGNAL);
-    close(index);
-    return (sent<=0)?0:1;
-}
 
-void get_data(char *buffer,char *data){
-    char *tmp=strstr(buffer,"\r\n\r\n");
-    if(tmp==NULL){
-        tmp=strstr(buffer,"\n\n");
-        if(tmp==NULL){
-            fprintf(stderr,"I can't get request content\n");
-        }
-    }
-    tmp++;
-    char *name=strstr(tmp,"=");name++;
-    int len=strlen(name);
-    strncpy(data,name,len);
-    for(int a=0;a<len;a++){
-        if(data[a]=='+')
-            data[a]=' ';
-    }
-}
+    string sbuf = (string)argv[1];
+    int pos = sbuf.find(':'), res;
+    struct sockaddr_in servaddr, httpaddr, cliaddr;
+    sock_fd = http_fd = -1;
 
-// send homepage.html to browser
-int send_homepage(){
-    char buf[4096]="\0";
-    char index_buf[2048]="\0";
-    int index,size;
-    index=open("../template/homepage.html",O_RDONLY);
-    if(index<=0) perror("open fail");
-    size=read(index,index_buf,2048);
-    if(size<=0) perror("read fail");
-    size+=set_http_header(buf,size,"text/html");
-    strcat(buf,index_buf);
-    int sent=send(req.conn_fd,buf,size,MSG_NOSIGNAL);
-    close(index);
-    return (sent<=0)?0:1;
-}
-
-// set http header of response, save it to buf
-int set_http_header(char *buf,int content_len,const char *filetype){
-    char code[64]="\0";
-    strcpy(code,"HTTP/1.1 200 OK\r\n");
-    strcat(buf,code);
-    strcat(buf,"Server: jdbhttpd/0.1.0\r\n");
-    char content[64];
-    sprintf(content,"Content-Length: %d\r\n",content_len);
-    strcat(buf,content);
-    strcat(buf,"Content-Type: ");
-    strcat(buf,filetype);
-    strcat(buf,"\r\nConnection: keep-alive\r\n\r\n");  
-    return strlen(buf);  
-}
-
-// set http 404 to browser
-void set_404_header(char *buf){
-    strcat(buf,"HTTP/1.1 404 Bad Request\r\n");
-    strcat(buf,"Server: jdbhttpd/0.1.0\r\n");
-    strcat(buf,"Content-Length: 169\r\n");
-    strcat(buf,"Content-Type: text/html\r\nConnection: Closed\r\n\r\n"); 
-    strcat(buf,"<html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center><hr><center>nginx/0.8.54</center></body></html>"); 
-}
-
-// set response to server, save it to now
-void set_response(package *now,int type,int bufferSize,char *buffer,char *sender,char *recver){
-    now->type=type;
-    now->buf_size=bufferSize;
-    memset(now->buf,0,sizeof(now->buf));
-    memcpy(now->buf,buffer,bufferSize);
-    if(sender!=NULL)
-        memcpy(now->sender,sender,64);
-    else
-        memset(now->sender,0,64);
-    if(recver!=NULL)
-        memcpy(now->recver,recver,64);
-    else
-        memset(now->recver,0,64);
-}
-
-void init_request(request *reqP){
-    reqP->conn_fd=-1;
-    reqP->filesize=0;
-}
-
-void free_request(request *reqP){
-    close(reqP->conn_fd);
-    init_request(reqP);
-}
-
-// build connection with browser
-int init_client(unsigned short port){
-    struct sockaddr_in servaddr;
-    int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (listen_fd < 0)
-        ERR_EXIT("socket");
-    bzero(&servaddr, sizeof(servaddr));
+    memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(port);
-    int tmp=1;
-    if (bind(listen_fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0){
-        ERR_EXIT("bind");
+    res = -1;
+    if((res = stoi(sbuf.substr(pos+1)))<0 || res>65535){
+        cout<<"server port should be a number between 0 to 65535."<<endl;
+        return 1;
     }
-    if (listen(listen_fd, 4) < 0){
-        ERR_EXIT("listen");
+    servaddr.sin_port = htons(res);
+    if(inet_pton(AF_INET, sbuf.substr(0,pos).c_str(), &servaddr.sin_addr) < 0){
+        cout<<"server ip should be a valid ip."<<endl;
+        return 1;
     }
-    if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (void *)&tmp, sizeof(tmp)) < 0){
-        ERR_EXIT("setsockopt");
+
+    memset(&httpaddr, 0, sizeof(httpaddr));
+    httpaddr.sin_family = AF_INET;
+    res = -1;
+    if((res = atoi(argv[2]))<0 || res>65535){
+        cout<<"browser port should be a number between 0 to 65535."<<endl;
+        return 1;
     }
-    init_request(&req);
-    
-    return listen_fd;
-}
+    httpaddr.sin_port = htons(res);
+    httpaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-// build connection with server
-void init_server(int port, char *ip){
-	svr.conn_fd=socket(AF_INET, SOCK_STREAM, 0);
-    if (svr.conn_fd < 0)
-        ERR_EXIT("socket");
-    svr.port=port;
-	struct sockaddr_in addr;
-	bzero(&addr, sizeof(addr));
-	addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = inet_addr(ip);
-    addr.sin_port = htons(port);
-	if(connect(svr.conn_fd, (struct sockaddr *)&addr, sizeof(addr))<0){
-		perror("socket wrong");
-        exit(0);
-	}
-}
+    //TCP client
+    if((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) ERR("socket()")
+    if(connect(sock_fd, (struct sockaddr*) &servaddr, sizeof(servaddr)) < 0) ERR("connect()")
 
-int file_select(const struct dirent *entry){
-   return strcmp(entry->d_name, ".")&&strcmp(entry->d_name, "..");
-}
+    //HTTP server
+    if((http_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) ERR("socket()")
+    if(bind(http_fd, (struct sockaddr*) &httpaddr, sizeof(httpaddr)) < 0) ERR("bind()")
+    if(listen(http_fd, SOMAXCONN) < 0) ERR("listen()")
 
-int check_username(char *tmp){
-    while(*tmp!='\0'){
-        char now=*tmp;
-        if((now-'a')*(now-'z')>0&&(now-'A')*(now-'Z')>0&&(now-'0')*(now-'9')>0)
-            return 0;
-        tmp++;
+    fd_set read_OK;
+
+    while(1){
+        cli_fd = -1;
+        logflag = 0;
+        int clilen = sizeof(cliaddr);
+        if((cli_fd = accept(http_fd, (struct sockaddr*) &cliaddr, (socklen_t*) &clilen)) < 0) continue;
+        
+        while(1){
+            FD_ZERO(&read_OK);
+            FD_SET(cli_fd, &read_OK);
+            //FD_SET(cli_fd, &read_OK), FD_SET(sock_fd, &read_OK);
+            select(cli_fd+1, &read_OK, NULL, NULL, NULL);
+            /*
+            if(FD_ISSET(sock_fd, &read_OK))
+                if(handle_server()<0) break;
+            */
+            if(FD_ISSET(cli_fd, &read_OK))
+                if(handle_http()<0){
+                    close(cli_fd);
+                    break;
+                }
+        }
     }
-    return 1;
 }
 
-void remove_friend(char *fri){
-    char path[128]="./";
-    strcat(path,fri);
-    strcat(path,"/chat");
-    remove(path);
-    rmdir(fri);
-}
-
-void set_chatroom(char *buf,int len){
-    char index_buf[2048]="\0";
-    int index,size;*buf='\0';
-    index=open("../template/chatroom.html",O_RDONLY);
-    if(index<=0) perror("open fail");
-    size=read(index,index_buf,2048);
-    if(size<=0) perror("read fail");
-    size+=set_http_header(buf,size+len,"text/html");
-    strcat(buf,index_buf);
-    close(index);
-}
-
-void set_latest(int fd,int piece,char *buf){
-    *buf='\0';
-    lseek(fd,0,SEEK_SET);
-    int fsize=lseek(fd,0,SEEK_END);
-    if(fsize<0)
-        perror("open failed");
-    lseek(fd,-min(fsize,piece*(int)sizeof(package)),SEEK_END);
-    package *his=(package *)malloc(piece*sizeof(package));
-    long long int rsize=read(fd,his,piece*sizeof(package));
-    
-    for(int a=0;a<rsize/sizeof(package);a++){
-        strcat(buf,"<p>");
-        strcat(buf,his[a].sender);
-        strcat(buf," : ");
-        strcat(buf,his[a].buf);
-        strcat(buf,"</p>");
+int index(){
+    if(logflag==1) return get("/homepage.html", 0);
+    int file_fd = open("./template/index.html", O_RDONLY), res;
+    string header = "text/html";
+    if(file_fd<0)
+        return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
+    filesize = lseek(file_fd, 0, SEEK_END);
+    if(filesize<0){
+        close(file_fd);
+        return -1;
     }
-    lseek(fd,0,SEEK_SET);
+    lseek(file_fd, 0, SEEK_SET);
+    if(logflag==-1) header = set_header(filesize+used.length(), header);
+    else header = set_header(filesize, header);
+    while((res = write(cli_fd, header.c_str(), header.length()))<0){
+        if(res<0 && errno==EAGAIN) continue;
+        close(file_fd);
+        return -1;
+    }
+    while(filesize>0){
+        while((res = read(file_fd, buf, filesize))<=0){
+            if(res<0 && errno==EAGAIN) continue;
+            break;
+        }
+        while((res = write(cli_fd, buf, res))<0){
+            if(res<0 && errno==EAGAIN) continue;
+            break;
+        }
+        filesize -= res;
+    }
+    close(file_fd);
+    if(res<0) return -1;
+    if(logflag<0)
+        while((res = write(cli_fd, used.c_str(), used.length()))<0){
+            if(res<0 && errno==EAGAIN) continue;
+            return -1;
+        }
+    return 0;
+}
+
+int get(string path, int extra){
+    if(logflag!=1) return index();
+    string header = "text/html";
+    path = "./template" + path;
+    int file_fd = open(path.c_str(), O_RDONLY), res;
+    if(file_fd<0)
+        return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
+    filesize = lseek(file_fd, 0, SEEK_END);
+    if(filesize<0){
+        close(file_fd);
+        return -1;
+    }
+    lseek(file_fd, 0, SEEK_SET);
+    header = set_header(filesize+extra, header);
+    if(write(cli_fd, header.c_str(), header.length())<0){
+        close(file_fd);
+        return -1;
+    }
+    while(filesize>0){
+        while((res = read(file_fd, buf, filesize))<=0){
+            if(res<0 && errno==EAGAIN) continue;
+            close(file_fd);
+            return -1;
+        }
+        while((res = write(cli_fd, buf, res))<0){
+            if(res<0 && errno==EAGAIN) continue;
+            close(file_fd);
+            return -1;
+        }
+        filesize -= res;
+    }
+    close(file_fd);
+    return 0;
+}
+
+int post(string event, int body_size){
+    int res;
+    if(event=="/username"){
+        string name = (string) buf;
+        res = name.find("=");
+        name = name.substr(res+1);
+
+        //check username
+        for(int i=0;i<name.length();++i){
+            if(isalnum(name[i])) continue;
+            logflag = -1;
+            return index();
+        }
+
+        package pkg(LOGIN, name);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+
+        if(((string)pkg.buf)=="Succeeed") logflag = 1, user = name;
+        else logflag = -1;
+
+        return index();
+    }
+    if(event=="/list_friend"){
+        package pkg;
+        pkg.type = LIST;
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+
+        string tmp = (string) pkg.buf;
+        res = tmp.find(" ");
+        int num = stoi(tmp.substr(0,res));
+        int extra = stoi(tmp.substr(res+1)) + 7*num;
+        get("/homepage.html",extra);
+
+        for(int i=0;i<num;++i){
+            if(read_package(pkg)<0) return -1;
+            tmp = "<p>" + (string)pkg.buf + "</p>";
+            if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
+        }
+
+        return 0;
+    }
+    if(event=="/add_friend"){
+        string name = (string) buf;
+        res = name.find("=");
+        name = name.substr(res+1);
+
+        package pkg(ADD, name);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+        
+        return get("/homepage.html", 0);
+    }
+    if(event=="/del_friend"){
+        string name = (string) buf;
+        res = name.find("=");
+        name = name.substr(res+1);
+
+        //check friendship
+        package pkg(CHECK, name);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+
+        if(((string)pkg.buf)=="Succeeed"){
+            pkg = package(DEL, name);
+            if(write_package(pkg)<0) return -1;
+            if(read_package(pkg)<0) return -1;
+        }
+
+        return get("/homepage.html", 0);
+    }
+    if(event=="/chat_with"){
+        string name = (string) buf;
+        res = name.find("=");
+        name = name.substr(res+1);
+
+        package pkg(CHECK, name);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+        
+        if(((string)pkg.buf)=="Succeeed"){
+            target = name;
+            return get("/chatroom.html", 0);
+        }
+        return get("/homepage.html", 0);
+    }
+    if(event=="/homepage"){
+        return get("/homepage.html", 0);
+    }
+    if(event=="/send_message"){
+        string content = (string) buf;
+        res = content.find("=");
+        content = content.substr(res+1);
+
+        package pkg(MSS, content, user, target);
+        if(write_package(pkg)<0) return -1;
+        if(read_package(pkg)<0) return -1;
+
+        event = "/update";
+    }
+    if(event=="/send_image"){
+        //read buf and then send 2 server
+    }
+    if(event=="/send_file"){
+        //read buf and then send 2 server
+    }
+    if(event=="/view_history" || event=="/update"){
+        string tmp = "30";
+        if(event=="/view_history"){
+            tmp = (string) buf;
+            res = tmp.find("=");
+            tmp = tmp.substr(res+1);
+        }
+        
+        int latest = stoi(tmp);
+        package pkg(HIS, tmp, user, target);
+        if(write_package(pkg)<0) return -1;
+        int extra = 0;
+        //extra = history_size recv from server
+
+        vector<struct package> space;
+        while(1){
+            if(read_package(pkg)<0) return -1;
+            if(pkg.type==HIS) break;
+            space.push_back(pkg);
+            extra += ((string)pkg.sender).length() + pkg.buf_size + 10;
+        }
+
+        if(get("/chatroom.html",extra)<0) return -1;
+
+        for(int i=0;i<((int)space.size());++i){
+            tmp = "<p>" + (string)space[i].sender + " : " + (string)space[i].buf + "</p>";
+            if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
+        }
+        return 0;
+    }
+    return -1;
 }

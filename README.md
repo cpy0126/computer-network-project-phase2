@@ -18,8 +18,6 @@ struct package{
 }
 ```
 
-
-
 ```cpp
 #include<time.h>
 time_t time; //seconds from 1970/1/1 00:00
@@ -29,3 +27,7 @@ local_time(*time_t) //change time_t to struct tm
 ctime(*time_t) //change time_t to char*
 asctime(struct *tm) //change struct tm to char*
 ```
+
+- [ ] Check html input size
+
+- [ ] Connect Client and Server (detect connection status)
