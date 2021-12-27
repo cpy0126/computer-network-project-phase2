@@ -25,6 +25,7 @@ using namespace std;
 #define LIST 700
 #define CHECK 800
 #define HIS 900
+#define GET 999
 
 
 #define ERR_EXIT(a) do { perror(a); exit(1); } while(0)
@@ -329,7 +330,28 @@ int main(int argc, char* argv[]){
                 close(fd);
                 send(requestP[conn_fd].conn_fd,&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
             }
-            
+            else if(requestP[conn_fd].now.type==GET){
+                string friend_name=(string)(requestP[conn_fd].now.recver);
+                string my_name=(string)(requestP[conn_fd].now.sender);
+                string file_name=(string)(requestP[conn_fd].now.buf);
+                string file_path="./"+my_name+"/"+friend_name+"/"+file_name;
+                int file_fd=open(file_path.c_str(),O_RDONLY);
+                long long int file_size=lseek(file_fd,0,SEEK_END);
+                lseek(file_fd,0,SEEK_SET);
+                string size=to_string(file_size);
+                package res_size;
+                set_response(&res_size,GET,size.size(),(char *)size.c_str(),NULL,NULL);
+                send(requestP[conn_fd].conn_fd,&res_size,sizeof(package),MSG_NOSIGNAL);
+                while(file_size>0){
+                    package tmp;
+                    char buf[2048];memset(buf,0,2048);
+                    int read_size=read(file_fd,buf,2048);
+                    set_response(&tmp,GET,read_size,buf,NULL,NULL);
+                    send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
+                    file_size-=read_size;
+                }
+                close(file_fd);
+            }
         }
 
 
