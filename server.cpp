@@ -237,7 +237,37 @@ int main(int argc, char* argv[]){
                 // send(user_names[new_friend],&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
             }
             else if(requestP[conn_fd].now.type==IMG){    // receve image
+                string file_name=(string)(requestP[conn_fd].now.buf);
+                string friend_name=(string)(requestP[conn_fd].now.recver);
+
+                string friend_chat="./"+requestP[conn_fd].user_name+"/"+friend_name+"/chat";
+                string my_chat="./"+friend_name+"/"+requestP[conn_fd].user_name+"/chat";
                 
+                int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
+                write(me,&(requestP[conn_fd].now),sizeof(package));
+                close(me);
+                if(requestP[conn_fd].user_name!=friend_name){
+                    int you=open(my_chat.c_str(),O_WRONLY|O_APPEND);
+                    write(you,&(requestP[conn_fd].now),sizeof(package));
+                    close(you);
+                }
+                
+                string friend_file="./"+requestP[conn_fd].user_name+"/"+friend_name+"/"+file_name;
+                string my_file="./"+friend_name+"/"+requestP[conn_fd].user_name+"/"+file_name;
+                
+                int my_fd=open(my_file.c_str(),O_WRONLY|O_CREAT);
+                int friend_fd=-1;
+                if(requestP[conn_fd].user_name!=friend_name)
+                    friend_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT);
+                handle_read(&requestP[conn_fd]);
+                while(strcmp(requestP[conn_fd].now.buf,succeed)){
+                    write(my_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                    if(friend_fd!=-1)
+                        write(friend_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                    handle_read(&requestP[conn_fd]);
+                }
+                close(my_fd);
+                if(friend_fd!=-1) close(friend_fd);
             }
             else if(requestP[conn_fd].now.type==FILES){    // receve file
                 
@@ -299,6 +329,7 @@ int main(int argc, char* argv[]){
                 close(fd);
                 send(requestP[conn_fd].conn_fd,&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
             }
+            
         }
 
 
