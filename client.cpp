@@ -350,10 +350,17 @@ int post(string event, int body_size){
         res = name.find("=");
         name = name.substr(res+1);
 
-        package pkg(DEL, name);
+        //check friendship
+        package pkg(CHECK, name);
         if(write_package(pkg)<0) return -1;
         if(read_package(pkg)<0) return -1;
-        
+
+        if(((string)pkg.buf)=="Succeeed"){
+            pkg = package(DEL, name);
+            if(write_package(pkg)<0) return -1;
+            if(read_package(pkg)<0) return -1;
+        }
+
         return get("/homepage.html", 0);
     }
     if(event=="/chat_with"){
