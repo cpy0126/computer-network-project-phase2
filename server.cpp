@@ -54,6 +54,8 @@ typedef struct package{
 typedef struct request{
     int conn_fd;  // fd to talk with client
     int filesize;
+    int myfile_fd;
+    int friend_fd;
     package now;
     string user_name;
 } request;
@@ -62,7 +64,6 @@ server svr;
 request* requestP = NULL;
 int maxfd;
 int readFD[100000],writeFD[100000];
-
 
 void init_server(unsigned short port);
 
@@ -142,6 +143,8 @@ int main(int argc, char* argv[]){
             }
             readFD[conn_fd]=1;
             requestP[conn_fd].conn_fd=conn_fd;
+            requestP[conn_fd].myfile_fd=-1;
+            requestP[conn_fd].friend_fd=-1;
             fprintf(stderr, "getting a new request... fd %d from %s\n", conn_fd, inet_ntoa(cliaddr.sin_addr));
             
             continue;
@@ -237,40 +240,90 @@ int main(int argc, char* argv[]){
                 send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 // send(user_names[new_friend],&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
             }
-            else if(requestP[conn_fd].now.type==IMG){    // receve image
-                string file_name=(string)(requestP[conn_fd].now.buf);
-                string friend_name=(string)(requestP[conn_fd].now.recver);
+            else if(requestP[conn_fd].now.type==IMG){   // receve image
+                if(requestP[conn_fd].friend_fd==-1&&requestP[conn_fd].myfile_fd==-1){
+                    string file_name=(string)(requestP[conn_fd].now.buf);
+                    string friend_name=(string)(requestP[conn_fd].now.recver);
+                    string friend_chat="./"+requestP[conn_fd].user_name+"/"+friend_name+"/chat";
+                    string my_chat="./"+friend_name+"/"+requestP[conn_fd].user_name+"/chat";
+                    string friend_file="./"+requestP[conn_fd].user_name+"/"+friend_name+"/"+file_name;
+                    string my_file="./"+friend_name+"/"+requestP[conn_fd].user_name+"/"+file_name;
+                    
+                    int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
+                    write(me,&(requestP[conn_fd].now),sizeof(package));
+                    close(me);
+                    if((requestP[conn_fd].friend_fd=open(my_file.c_str(),O_WRONLY|O_CREAT))<0)
+                        perror("open file error: ");
+                    if(requestP[conn_fd].user_name==friend_name)
+                        continue;
 
-                string friend_chat="./"+requestP[conn_fd].user_name+"/"+friend_name+"/chat";
-                string my_chat="./"+friend_name+"/"+requestP[conn_fd].user_name+"/chat";
-                
-                int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
-                write(me,&(requestP[conn_fd].now),sizeof(package));
-                close(me);
-                if(requestP[conn_fd].user_name!=friend_name){
                     int you=open(my_chat.c_str(),O_WRONLY|O_APPEND);
                     write(you,&(requestP[conn_fd].now),sizeof(package));
                     close(you);
+                    if((requestP[conn_fd].myfile_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT))<0)
+                        perror("open file error: ");
+                    continue;
                 }
                 
-                string friend_file="./"+requestP[conn_fd].user_name+"/"+friend_name+"/"+file_name;
-                string my_file="./"+friend_name+"/"+requestP[conn_fd].user_name+"/"+file_name;
-                
-                int my_fd=open(my_file.c_str(),O_WRONLY|O_CREAT);
-                int friend_fd=-1;
-                if(requestP[conn_fd].user_name!=friend_name)
-                    friend_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT);
-                handle_read(&requestP[conn_fd]);
-                while(strcmp(requestP[conn_fd].now.buf,succeed)){
-                    write(my_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
-                    if(friend_fd!=-1)
-                        write(friend_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
-                    handle_read(&requestP[conn_fd]);
+                if(!strcmp(requestP[conn_fd].now.buf,succeed)){
+                    if(requestP[conn_fd].friend_fd!=-1)
+                        close(requestP[conn_fd].friend_fd);
+                    if(requestP[conn_fd].myfile_fd!=-1)
+                        close(requestP[conn_fd].myfile_fd);
+                    requestP[conn_fd].myfile_fd=-1;
+                    requestP[conn_fd].friend_fd=-1;
+                    continue;
                 }
-                close(my_fd);
-                if(friend_fd!=-1) close(friend_fd);
+
+                if(requestP[conn_fd].friend_fd!=-1){
+                    write(requestP[conn_fd].friend_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                }
+                if(requestP[conn_fd].myfile_fd!=-1){
+                    write(requestP[conn_fd].myfile_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                }
+
             }
             else if(requestP[conn_fd].now.type==FILES){    // receve file
+                if(requestP[conn_fd].friend_fd==-1&&requestP[conn_fd].myfile_fd==-1){
+                    string file_name=(string)(requestP[conn_fd].now.buf);
+                    string friend_name=(string)(requestP[conn_fd].now.recver);
+                    string friend_chat="./"+requestP[conn_fd].user_name+"/"+friend_name+"/chat";
+                    string my_chat="./"+friend_name+"/"+requestP[conn_fd].user_name+"/chat";
+                    string friend_file="./"+requestP[conn_fd].user_name+"/"+friend_name+"/"+file_name;
+                    string my_file="./"+friend_name+"/"+requestP[conn_fd].user_name+"/"+file_name;
+                    
+                    int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
+                    write(me,&(requestP[conn_fd].now),sizeof(package));
+                    close(me);
+                    if((requestP[conn_fd].friend_fd=open(my_file.c_str(),O_WRONLY|O_CREAT))<0)
+                        perror("open file error: ");
+                    if(requestP[conn_fd].user_name==friend_name)
+                        continue;
+
+                    int you=open(my_chat.c_str(),O_WRONLY|O_APPEND);
+                    write(you,&(requestP[conn_fd].now),sizeof(package));
+                    close(you);
+                    if((requestP[conn_fd].myfile_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT))<0)
+                        perror("open file error: ");
+                    continue;
+                }
+                
+                if(!strcmp(requestP[conn_fd].now.buf,succeed)){
+                    if(requestP[conn_fd].friend_fd!=-1)
+                        close(requestP[conn_fd].friend_fd);
+                    if(requestP[conn_fd].myfile_fd!=-1)
+                        close(requestP[conn_fd].myfile_fd);
+                    requestP[conn_fd].myfile_fd=-1;
+                    requestP[conn_fd].friend_fd=-1;
+                    continue;
+                }
+
+                if(requestP[conn_fd].friend_fd!=-1){
+                    write(requestP[conn_fd].friend_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                }
+                if(requestP[conn_fd].myfile_fd!=-1){
+                    write(requestP[conn_fd].myfile_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                }
                 
             }
             else if(requestP[conn_fd].now.type==LIST){
@@ -354,8 +407,6 @@ int main(int argc, char* argv[]){
             }
         }
 
-
-
     }
 
 }
@@ -364,6 +415,8 @@ int main(int argc, char* argv[]){
 void init_request(request *reqP){
     reqP->conn_fd=-1;
     reqP->filesize=0;
+    reqP->myfile_fd=-1;
+    reqP->friend_fd=-1;
 }
 
 void free_request(request *reqP){
