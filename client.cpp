@@ -71,7 +71,7 @@ struct package{
     }
 };
 
-char buf[1000000],head_buf[10000];
+char buf[100000],head_buf[10000];
 int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
 long long int filesize;
 
@@ -107,6 +107,7 @@ void get_boundary(){
     boundary = shead.substr(res+9);
     res = boundary.find("\r\n");
     boundary = boundary.substr(0,res);
+    boundary = "--" + boundary;
     return;
 }
 
@@ -148,7 +149,7 @@ int handle_http(){
         res = method.find("\r\n");
         body_size = stoi(method.substr(16,res));
         if(reqpath=="/send_image" || reqpath=="/send_file") return post(reqpath, body_size);
-        memset(buf, 0, sizeof(char)*(body_size+1));
+        memset(buf, 0, sizeof(char)*(body_size+10));
         while(body_size>0){
             //need to check connection with server
             if((res = read(cli_fd, buf+bufsize, body_size))<0) continue;
@@ -224,6 +225,7 @@ int main(int argc, char* argv[]){
             if(FD_ISSET(cli_fd, &read_OK))
                 if(handle_http()<0){
                     close(cli_fd);
+                    cerr << "Something Wrong." << endl;
                     break;
                 }
         }
@@ -400,10 +402,8 @@ int post(string event, int body_size){
         string content = (string) buf;
         res = content.find("\r\n\r\n");
         content = content.substr(res+4);
-        res = content.rfind(boundary);
-        content = content.substr(0, res);
-        res = content.find("=");
-        content = content.substr(res+1);
+        res = content.find(boundary);
+        content = content.substr(0, res-1);
 
         package pkg(MSS, content, user, target);
         if(write_package(pkg)<0) return -1;
@@ -426,6 +426,7 @@ int post(string event, int body_size){
             if(prev=='\r' && cur=='\n') tmp+=((string)head_buf).substr(0,headsize), body_size-=headsize, headsize=0;
             prev = cur;
         }
+        cerr << "HEAD: " << tmp << endl;
         res = tmp.find("filename=");
         filename = tmp.substr(res+10);
         res = filename.find("\r\n");
@@ -470,6 +471,7 @@ int post(string event, int body_size){
             if(prev=='\r' && cur=='\n') tmp+=((string)head_buf).substr(0,headsize), body_size-=headsize, headsize=0;
             prev = cur;
         }
+        cerr << "HEAD: " << tmp << endl;
         res = tmp.find("filename=");
         filename = tmp.substr(res+10);
         res = filename.find("\r\n");
