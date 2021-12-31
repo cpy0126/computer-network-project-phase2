@@ -24,6 +24,7 @@ using namespace std;
 #define LIST 700
 #define CHECK 800
 #define HIS 900
+#define GET 999
 
 string set_header(long long int content_len, string &filetype){
     string header;
@@ -41,6 +42,7 @@ string header404 ="\
     <html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center>\
     <hr><center>nginx/0.8.54</center></body></html>";
 string used = "<html><h2>Username used or illegal, please choose another</h2></html>", user, target;
+string shead, boundary;
 
 struct package{
     int type, buf_size;
@@ -53,13 +55,13 @@ struct package{
         memset(recver, 0, sizeof(recver));
         Time = time(NULL);
     }
-    package(int _type, string& buffer){
+    package(int _type, string buffer){
         package();
         type = _type;
         buf_size = buffer.length();
         memcpy(buf, buffer.c_str(), sizeof(&buffer));
     }
-    package(int _type, string& buffer, string& _sender, string& _recver){
+    package(int _type, string buffer, string& _sender, string& _recver){
         package();
         type = _type;
         buf_size = buffer.length();
@@ -69,7 +71,7 @@ struct package{
     }
 };
 
-char buf[1000000],head_buf[1000];
+char buf[1000000],head_buf[10000];
 int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
 long long int filesize;
 
@@ -98,28 +100,40 @@ int write_package(package &pkg){
     return 0;
 }
 
+void get_boundary(){
+    int res;
+    res = shead.find("boundary=");
+    if(res==-1) return;
+    boundary = shead.substr(res+9);
+    res = boundary.find("\r\n");
+    boundary = boundary.substr(0,res);
+    return;
+}
+
 int handle_http(){
     int res, body_size = 0;
     memset(head_buf, 0, sizeof(head_buf));
     headsize = bufsize = 0;
     char cur = '\0', prev = '\0';
-    string shead, method, reqpath;
+    string method, reqpath;
+    shead = "";
     while(1){
         if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
         if(!res) return -1;
         cur = head_buf[headsize];
         ++headsize;
         if(prev=='\r' && cur=='\n' && headsize==2) break;
-        if(prev=='\r' && cur=='\n') shead+=(string)head_buf, headsize=0;
+        if(prev=='\r' && cur=='\n') shead+=((string)head_buf).substr(0,headsize), headsize=0;
         prev = cur;
     }
     res = shead.find(" ");
     method = shead.substr(0,res);
-    shead = shead.substr(res+1);
-    res = shead.find(" ");
-    reqpath = shead.substr(0,res);
-    res = shead.find("?");
+    reqpath = shead.substr(res+1);
+    res = reqpath.find(" ");
     reqpath = reqpath.substr(0,res);
+    res = shead.rfind("?");
+    if(res!=-1)
+        reqpath = reqpath.substr(0,res);
     if(method=="GET"){
         if(reqpath=="/"){
             if(logflag==1) return get("/homepage.html", 0);
@@ -130,9 +144,9 @@ int handle_http(){
     }
     if(method=="POST"){
         res = shead.rfind("Content-Length: ");
-        shead = shead.substr(res);
-        res = shead.find("\r\n");
-        body_size = stoi(shead.substr(16,res));
+        method = shead.substr(res);
+        res = method.find("\r\n");
+        body_size = stoi(method.substr(16,res));
         if(reqpath=="/send_image" || reqpath=="/send_file") return post(reqpath, body_size);
         memset(buf, 0, sizeof(char)*(body_size+1));
         while(body_size>0){
@@ -382,7 +396,12 @@ int post(string event, int body_size){
         return get("/homepage.html", 0);
     }
     if(event=="/send_message"){
+        get_boundary();
         string content = (string) buf;
+        res = content.find("\r\n\r\n");
+        content = content.substr(res+4);
+        res = content.rfind(boundary);
+        content = content.substr(0, res);
         res = content.find("=");
         content = content.substr(res+1);
 
@@ -393,12 +412,95 @@ int post(string event, int body_size){
         event = "/update";
     }
     if(event=="/send_image"){
+        get_boundary();
+        char cur = '\0', prev = '\0';
+        string tmp, filename;
+        headsize = 0;
+        memset(head_buf, 0, sizeof(head_buf));
+        while(1){
+            if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
+            if(!res) return -1;
+            cur = head_buf[headsize];
+            ++headsize;
+            if(prev=='\r' && cur=='\n' && headsize==2) break;
+            if(prev=='\r' && cur=='\n') tmp+=((string)head_buf).substr(0,headsize), body_size-=headsize, headsize=0;
+            prev = cur;
+        }
+        res = tmp.find("filename=");
+        filename = tmp.substr(res+10);
+        res = filename.find("\r\n");
+        filename = filename.substr(0, res-1);
+        res = filename.rfind(".");
+        filename = filename.substr(res);
+        package pkg;
+        time(&pkg.Time);
+        filename = to_string(pkg.Time) + filename;
+        cerr << "filename: " << filename << endl;
+        pkg = package(IMG, filename, user, target);
+
+        body_size -= headsize;
+        pkg.buf_size = body_size - boundary.length();
+        cerr << pkg.buf_size << endl;
+        while(body_size>0){
+            memset(pkg.buf, 0, sizeof(pkg.buf));
+            if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
+            pkg.buf_size = res;
+            if(write_package(pkg)<0) return -1;
+            body_size -= res;
+        }
+        pkg = package(IMG, (string)"Succeeed", user, target);
+        if(write_package(pkg)<0) return -1;
         //read buf and then send 2 server
+        cerr << "boundary: " << boundary << endl;
+
+        event = "/update";
     }
     if(event=="/send_file"){
+        get_boundary();
+        char cur = '\0', prev = '\0';
+        string tmp, filename;
+        headsize = 0;
+        memset(head_buf, 0, sizeof(head_buf));
+        while(1){
+            if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
+            if(!res) return -1;
+            cur = head_buf[headsize];
+            ++headsize;
+            if(prev=='\r' && cur=='\n' && headsize==2) break;
+            if(prev=='\r' && cur=='\n') tmp+=((string)head_buf).substr(0,headsize), body_size-=headsize, headsize=0;
+            prev = cur;
+        }
+        res = tmp.find("filename=");
+        filename = tmp.substr(res+10);
+        res = filename.find("\r\n");
+        filename = filename.substr(0, res-1);
+        res = filename.rfind(".");
+        filename = filename.substr(res);
+        package pkg;
+        time(&pkg.Time);
+        filename = to_string(pkg.Time) + filename;
+        cerr << "filename: " << filename << endl;
+        pkg = package(FILES, filename, user, target);
+
+        body_size -= headsize;
+        pkg.buf_size = body_size - boundary.length();
+        cerr << pkg.buf_size << endl;
+        while(body_size>0){
+            memset(pkg.buf, 0, sizeof(pkg.buf));
+            if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
+            pkg.buf_size = res;
+            if(write_package(pkg)<0) return -1;
+            body_size -= res;
+        }
+        pkg = package(FILES, (string)"Succeeed", user, target);
+        if(write_package(pkg)<0) return -1;
         //read buf and then send 2 server
+        cerr << "boundary: " << boundary << endl;
+
+        event = "/update";
     }
     if(event=="/view_history" || event=="/update"){
+        cerr << "HIS with LOGFLAG: " << logflag << endl;
         string tmp = "30";
         if(event=="/view_history"){
             tmp = (string) buf;
