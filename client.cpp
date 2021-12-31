@@ -440,6 +440,7 @@ int post(string event, int body_size){
 
         body_size -= headsize;
         pkg.buf_size = body_size - boundary.length();
+        cerr << pkg.buf_size << endl;
         while(body_size>0){
             memset(pkg.buf, 0, sizeof(pkg.buf));
             if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
@@ -455,7 +456,48 @@ int post(string event, int body_size){
         event = "/update";
     }
     if(event=="/send_file"){
+        get_boundary();
+        char cur = '\0', prev = '\0';
+        string tmp, filename;
+        headsize = 0;
+        memset(head_buf, 0, sizeof(head_buf));
+        while(1){
+            if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
+            if(!res) return -1;
+            cur = head_buf[headsize];
+            ++headsize;
+            if(prev=='\r' && cur=='\n' && headsize==2) break;
+            if(prev=='\r' && cur=='\n') tmp+=((string)head_buf).substr(0,headsize), body_size-=headsize, headsize=0;
+            prev = cur;
+        }
+        res = tmp.find("filename=");
+        filename = tmp.substr(res+10);
+        res = filename.find("\r\n");
+        filename = filename.substr(0, res-1);
+        res = filename.rfind(".");
+        filename = filename.substr(res);
+        package pkg;
+        time(&pkg.Time);
+        filename = to_string(pkg.Time) + filename;
+        cerr << "filename: " << filename << endl;
+        pkg = package(FILES, filename, user, target);
+
+        body_size -= headsize;
+        pkg.buf_size = body_size - boundary.length();
+        cerr << pkg.buf_size << endl;
+        while(body_size>0){
+            memset(pkg.buf, 0, sizeof(pkg.buf));
+            if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
+            pkg.buf_size = res;
+            if(write_package(pkg)<0) return -1;
+            body_size -= res;
+        }
+        pkg = package(FILES, (string)"Succeeed", user, target);
+        if(write_package(pkg)<0) return -1;
         //read buf and then send 2 server
+        cerr << "boundary: " << boundary << endl;
+
+        event = "/update";
     }
     if(event=="/view_history" || event=="/update"){
         cerr << "HIS with LOGFLAG: " << logflag << endl;
