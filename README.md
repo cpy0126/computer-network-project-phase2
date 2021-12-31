@@ -30,4 +30,8 @@ asctime(struct *tm) //change struct tm to char*
 
 - [ ] Check html input size
 
-- [ ] Connect Client and Server (detect connection status)
+- [x] Check friend relationship when del
+
+- [ ] send img
+
+- [ ] send file
