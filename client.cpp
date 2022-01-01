@@ -49,20 +49,22 @@ struct package{
     char buf[2048], sender[64], recver[64];
     time_t Time;
     package(){
-        type = buf_size = 0;
+        Time = time(NULL);    
+    }
+    package(int _type, string buffer){
         memset(buf, 0, sizeof(buf));
         memset(sender, 0, sizeof(sender));
         memset(recver, 0, sizeof(recver));
         Time = time(NULL);
-    }
-    package(int _type, string buffer){
-        package();
         type = _type;
         buf_size = buffer.length();
         strncpy(buf, buffer.c_str(), buffer.length());
     }
     package(int _type, string buffer, string& _sender, string& _recver){
-        package();
+        memset(buf, 0, sizeof(buf));
+        memset(sender, 0, sizeof(sender));
+        memset(recver, 0, sizeof(recver));
+        Time = time(NULL);
         type = _type;
         buf_size = buffer.length();
         strncpy(buf, buffer.c_str(), buffer.length());
@@ -74,6 +76,7 @@ struct package{
 char buf[100000],head_buf[10000];
 int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
 long long int filesize;
+vector<struct package> space;
 
 int index();
 int get(string path, int extra);
@@ -148,7 +151,8 @@ int handle_http(){
         method = shead.substr(res);
         res = method.find("\r\n");
         body_size = stoi(method.substr(16,res));
-        if(reqpath=="/send_image" || reqpath=="/send_file") return post(reqpath, body_size);
+        if(reqpath=="/send_image" || reqpath=="/send_file")
+            return post(reqpath, body_size);
         memset(buf, 0, sizeof(char)*(body_size+10));
         while(body_size>0){
             //need to check connection with server
@@ -222,13 +226,13 @@ int main(int argc, char* argv[]){
             if(FD_ISSET(sock_fd, &read_OK))
                 if(handle_server()<0) break;
             */
-            if(FD_ISSET(cli_fd, &read_OK))
-                if((res=handle_http())<0){
-                    cerr << "error: " << res << endl;
+            if(FD_ISSET(cli_fd, &read_OK)){
+                if(handle_http()<0){
+                    perror("handle_http");
                     close(cli_fd);
-                    cerr << "Something Wrong." << endl;
                     break;
                 }
+            }
         }
     }
 }
@@ -270,7 +274,6 @@ int index(){
             if(res<0 && errno==EAGAIN) continue;
             return -1;
         }
-    cerr << "GET INDEX" << endl;
     return 0;
 }
 
@@ -306,7 +309,6 @@ int get(string path, int extra){
         filesize -= res;
     }
     close(file_fd);
-    cerr << "GET" << path << " extra= " << extra << endl;
     return 0;
 }
 
@@ -337,9 +339,7 @@ int post(string event, int body_size){
         package pkg;
         pkg.type = LIST;
         if(write_package(pkg)<0) return -1;
-        cerr << "list write" << endl;
         if(read_package(pkg)<0) return -1;
-        cerr << "list read" << endl;
 
         string tmp = (string) pkg.buf;
         res = tmp.find(" ");
@@ -352,7 +352,6 @@ int post(string event, int body_size){
             tmp = "<p>" + (string)pkg.buf + "</p>";
             if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
         }
-        cerr << "list_friend write" << endl;
 
         return 0;
     }
@@ -363,9 +362,7 @@ int post(string event, int body_size){
 
         package pkg(ADD, name);
         if(write_package(pkg)<0) return -1;
-        cerr << "add_frd write" << endl;
         if(read_package(pkg)<0) return -1;
-        cerr << "add_frd read" << endl;
         
         return get("/homepage.html", 0);
     }
@@ -377,16 +374,12 @@ int post(string event, int body_size){
         //check friendship
         package pkg(CHECK, name);
         if(write_package(pkg)<0) return -1;
-        cerr << "del_frd write" << endl;
         if(read_package(pkg)<0) return -1;
-        cerr << "del_frd read" << endl;
 
         if(((string)pkg.buf)=="Succeeed"){
             pkg = package(DEL, name);
             if(write_package(pkg)<0) return -1;
-            cerr << "del_frd Write" << endl;
             if(read_package(pkg)<0) return -1;
-            cerr << "del_frd Read" << endl;
         }
 
         return get("/homepage.html", 0);
@@ -398,9 +391,7 @@ int post(string event, int body_size){
 
         package pkg(CHECK, name);
         if(write_package(pkg)<0) return -1;
-        cerr << "char_with write" << endl;
         if(read_package(pkg)<0) return -1;
-        cerr << "char_with read" << endl;
         
         if(((string)pkg.buf)=="Succeeed"){
             target = name;
@@ -418,14 +409,10 @@ int post(string event, int body_size){
         content = content.substr(res+4);
         res = content.find(boundary);
         content = content.substr(0, res-1);
-        cerr << content << endl;
-
+        
         package pkg(MSS, content, user, target);
-        cerr << (string)pkg.buf << endl;
         if(write_package(pkg)<0) return -1;
-        cerr << "send_mss write" << endl;
         if(read_package(pkg)<0) return -1;
-        cerr << "send_mss read" << endl;
 
         event = "/update";
     }
@@ -533,7 +520,7 @@ int post(string event, int body_size){
         int extra = 0;
         //extra = history_size recv from server
 
-        vector<struct package> space;
+        space.clear();
         while(1){
             if(read_package(pkg)<0) return -1;
             if(pkg.type==HIS) break;
@@ -543,21 +530,22 @@ int post(string event, int body_size){
             if(pkg.type==IMG)
                 extra += ((string)pkg.buf).length() + 57; 
             if(pkg.type==FILES)
-                extra += ((string)pkg.buf).length() + 34;
+                extra += ((string)pkg.buf).length() + 33;
         }
         
         extra += ((string)pkg.sender).length() * (int)space.size();
         if(get("/chatroom.html",extra)<0) return -1;
         
         for(int i=0;i<((int)space.size());++i){
-            tmp = "<p>" + (string)space[i].sender + " : ";
+            tmp = "<p>" + (string)space[i].sender + " : \0";
             if(space[i].type==MSS)
-                tmp += (string)space[i].buf + "</p>";
+                tmp = tmp + (string)space[i].buf + "</p>\0";
             if(space[i].type==IMG)
-                tmp += "</p><img src=\"" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">";
+                tmp = tmp + "</p><img src=\"" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">\0";
             if(space[i].type==FILES)
-                tmp += "</p><a herf=\"" + (string)space[i].buf + "\" downlaoad /a>"; 
-            if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
+                tmp = tmp + "</p><a herf=\"" + (string)space[i].buf + "\" download /a>\0";
+            if(write(cli_fd, tmp.c_str(), tmp.length())<0)
+                return -1;
         }
         return 0;
     }
