@@ -447,6 +447,7 @@ int post(string event, int body_size){
         pkg.buf_size = body_size - boundary.length() - 2;
         if(write_package(pkg)<0) return -1;
         cerr << pkg.buf_size << endl;
+        if(write_package(pkg)<0) return -1;
         while(body_size>0){
             memset(pkg.buf, 0, sizeof(pkg.buf));
             if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
@@ -491,6 +492,7 @@ int post(string event, int body_size){
         pkg.buf_size = body_size - boundary.length() - 2;
         if(write_package(pkg)<0) return -1;
         cerr << pkg.buf_size << endl;
+        if(write_package(pkg)<0) return -1;
         while(body_size>0){
             memset(pkg.buf, 0, sizeof(pkg.buf));
             if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
