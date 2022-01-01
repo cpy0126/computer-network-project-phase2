@@ -442,6 +442,7 @@ int post(string event, int body_size){
         body_size -= headsize;
         pkg.buf_size = body_size - boundary.length();
         cerr << pkg.buf_size << endl;
+        if(write_package(pkg)<0) return -1;
         while(body_size>0){
             memset(pkg.buf, 0, sizeof(pkg.buf));
             if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
@@ -487,6 +488,7 @@ int post(string event, int body_size){
         body_size -= headsize;
         pkg.buf_size = body_size - boundary.length();
         cerr << pkg.buf_size << endl;
+        if(write_package(pkg)<0) return -1;
         while(body_size>0){
             memset(pkg.buf, 0, sizeof(pkg.buf));
             if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
@@ -527,7 +529,7 @@ int post(string event, int body_size){
         if(get("/chatroom.html",extra)<0) return -1;
 
         for(int i=0;i<((int)space.size());++i){
-            tmp = "<p>" + (string)space[i].sender + " : " + (string)space[i].buf + "</p>";
+            tmp = "<p>" + (string)space[i].sender + " :  " + (string)space[i].buf + "</p>";
             if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
         }
         return 0;
