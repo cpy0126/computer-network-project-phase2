@@ -97,6 +97,7 @@ int post(string event, int body_size);
 
 int read_package(package &pkg){
     int tmp = 0, res;
+    memset(pkg.buf, 0, sizeof(pkg.buf));
     while(tmp!=sizeof(package)){
         while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
             if(res<0 && errno==EAGAIN) continue;
@@ -448,7 +449,7 @@ int post(string event, int body_size){
         res = content.find("\r\n\r\n");
         content = content.substr(res+4);
         res = content.find(boundary);
-        content = content.substr(0, res-1);
+        content = content.substr(0, res-2);
         
         package pkg(MSS, content, user, target);
         if(write_package(pkg)<0) return -1;
