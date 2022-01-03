@@ -12,6 +12,7 @@
 #include<unistd.h>
 #include<string.h>
 #include<vector>
+#include<map>
 using namespace std;
 
 #define ERR(a) {perror(a); return EXIT_FAILURE;}
@@ -26,10 +27,11 @@ using namespace std;
 #define HIS 900
 #define GET 999
 
-string set_header(long long int content_len, string &filetype){
+string set_header(int content_len, string filetype, string extra){
     string header;
     header = "HTTP/1.1 200 OK\r\nServer: jdbhttpd/0.1.0\r\nContent-Length: " + to_string(content_len);
-    header = header + "\r\nContent-Type: " + filetype + "\r\nConnection: keep-alive\r\n\r\n";
+    header = header + "\r\nContent-Type: " + filetype + "\r\nConnection: keep-alive\r\n";
+    header = header + extra + "\r\n";
     return header;
 }
 
@@ -43,6 +45,17 @@ string header404 ="\
     <hr><center>nginx/0.8.54</center></body></html>";
 string used = "<html><h2>Username used or illegal, please choose another</h2></html>", user, target;
 string shead, boundary;
+map<string, string> mmap;
+
+void inline_init(){
+    mmap["html"] = "text/html";
+    mmap["jpg"] = "image/jpeg";
+    mmap["jpeg"] = "image/jpeg";
+    mmap["png"] = "image/png";
+    mmap["gif"] = "image/gif";
+    mmap["mp4"] = "video/mp4";
+    mmap["mp3"] = "audio/mp3";
+}
 
 struct package{
     int type, buf_size;
@@ -75,7 +88,7 @@ struct package{
 
 char buf[100000],head_buf[10000];
 int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
-long long int filesize;
+int filesize;
 vector<struct package> space;
 
 int index();
@@ -140,11 +153,11 @@ int handle_http(){
         reqpath = reqpath.substr(0,res);
     if(method=="GET"){
         if(reqpath=="/"){
-            if(logflag==1) return (get("/homepage.html", 0));
+            if(logflag==1) return get("/homepage.html", 0);
             return (index());
         }
         else
-            return (write(cli_fd, header404.c_str(), header404.length())<0)? -1 : 0;
+            return get(reqpath, 0);
     }
     if(method=="POST"){
         res = shead.rfind("Content-Length: ");
@@ -210,12 +223,18 @@ int main(int argc, char* argv[]){
     if(listen(http_fd, SOMAXCONN) < 0) ERR("listen()")
 
     fd_set read_OK;
+    inline_init();
 
     while(1){
         cli_fd = -1;
-        logflag = 0;
         int clilen = sizeof(cliaddr);
         if((cli_fd = accept(http_fd, (struct sockaddr*) &cliaddr, (socklen_t*) &clilen)) < 0) continue;
+        if(logflag==-1)
+            if(write(cli_fd, header404.c_str(), header404.length())<0){
+                close(cli_fd);
+                logflag = -1;
+                continue;
+            }
         
         while(1){
             FD_ZERO(&read_OK);
@@ -230,6 +249,7 @@ int main(int argc, char* argv[]){
                 if(handle_http()<0){
                     perror("handle_http");
                     close(cli_fd);
+                    logflag = -1;
                     break;
                 }
             }
@@ -249,8 +269,9 @@ int index(){
         return -1;
     }
     lseek(file_fd, 0, SEEK_SET);
-    if(logflag==-1) header = set_header(filesize+used.length(), header);
-    else header = set_header(filesize, header);
+    string tmp = "";
+    if(logflag==-1) header = set_header(filesize+used.length(), header, tmp);
+    else header = set_header(filesize, header, tmp);
     while((res = write(cli_fd, header.c_str(), header.length()))<0){
         if(res<0 && errno==EAGAIN) continue;
         close(file_fd);
@@ -278,37 +299,51 @@ int index(){
 }
 
 int get(string path, int extra){
+
     if(logflag!=1) return index();
-    string header = "text/html";
-    path = "./template" + path;
-    int file_fd = open(path.c_str(), O_RDONLY), res;
-    if(file_fd<0)
+    package pkg(GET, path);
+    
+    cerr << "path = " << path << endl;
+    if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html"){
+        strncpy(pkg.sender, ((string)"..").c_str(), 2);
+        strncpy(pkg.recver, ((string)"template").c_str(), 8);
+    }
+    else{
+        strncpy(pkg.sender, user.c_str(), user.length());
+        strncpy(pkg.recver, target.c_str(), target.length());
+    }
+
+    if(write_package(pkg)<0) return -1;
+    if(read_package(pkg)<0) return -1;
+
+    if((string)pkg.buf=="Failed")
         return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
-    filesize = lseek(file_fd, 0, SEEK_END);
-    if(filesize<0){
-        close(file_fd);
-        return -1;
-    }
-    lseek(file_fd, 0, SEEK_SET);
-    header = set_header(filesize+extra, header);
-    if(write(cli_fd, header.c_str(), header.length())<0){
-        close(file_fd);
-        return -1;
-    }
+
+    filesize = atoi(pkg.buf);
+    int res = path.rfind(".");
+    string header = "text/plain";
+    string extra_header = "Content-Disposition: attachment; filename=\"" + path + "\"\r\n";
+    if(res!=-1)
+        if(mmap.find(path.substr(res+1))!=mmap.end()){
+            header = mmap[path.substr(res+1)];
+            extra_header = "";
+        }
+    cerr << "Content_type: " << header << endl;
+
+    header = set_header(filesize + extra, header, extra_header);
+    if(write(cli_fd, header.c_str(), header.length())<0) return -1;
+    
+    cerr << filesize << " ";
     while(filesize>0){
-        while((res = read(file_fd, buf, filesize))<=0){
-            if(res<0 && errno==EAGAIN) continue;
-            close(file_fd);
-            return -1;
-        }
-        while((res = write(cli_fd, buf, res))<0){
-            if(res<0 && errno==EAGAIN) continue;
-            close(file_fd);
-            return -1;
-        }
-        filesize -= res;
+        memset(pkg.buf, 0, sizeof(pkg.buf));
+        if(read_package(pkg)<0) return -1;
+        if(write(cli_fd, pkg.buf, pkg.buf_size)<0) return -1;
+        filesize -= pkg.buf_size;
+        cerr << filesize << " ";
     }
-    close(file_fd);
+    cerr << endl;
+    cerr << "get finished" << endl;
+
     return 0;
 }
 
@@ -345,11 +380,16 @@ int post(string event, int body_size){
         res = tmp.find(" ");
         int num = stoi(tmp.substr(0,res));
         int extra = stoi(tmp.substr(res+1)) + 7*num;
-        get("/homepage.html",extra);
-
+        space.clear();
         for(int i=0;i<num;++i){
             if(read_package(pkg)<0) return -1;
-            tmp = "<p>" + (string)pkg.buf + "</p>";
+            space.push_back(pkg);
+        }
+
+        if(get("/homepage.html",extra)<0) return -1;
+        
+        for(int i=0;i<num;++i){
+            tmp = "<p>" + (string)space[i].buf + "</p>";
             if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
         }
 
@@ -514,7 +554,6 @@ int post(string event, int body_size){
         }
         
         int latest = stoi(tmp);
-        cerr << latest << " " << tmp << endl;
         package pkg(HIS, tmp, user, target);
         if(write_package(pkg)<0) return -1;
         int extra = 0;
@@ -530,20 +569,22 @@ int post(string event, int body_size){
             if(pkg.type==IMG)
                 extra += ((string)pkg.buf).length() + 57; 
             if(pkg.type==FILES)
-                extra += ((string)pkg.buf).length() + 33;
+                extra += ((string)pkg.buf).length() + 41;
         }
         
         extra += ((string)pkg.sender).length() * (int)space.size();
         if(get("/chatroom.html",extra)<0) return -1;
+        cerr << (int)space.size() << endl;
         
         for(int i=0;i<((int)space.size());++i){
             tmp = "<p>" + (string)space[i].sender + " : \0";
             if(space[i].type==MSS)
                 tmp = tmp + (string)space[i].buf + "</p>\0";
             if(space[i].type==IMG)
-                tmp = tmp + "</p><img src=\"" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">\0";
+                tmp = tmp + "</p><img src=\"\0" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">\0";
             if(space[i].type==FILES)
-                tmp = tmp + "</p><a herf=\"" + (string)space[i].buf + "\" download /a>\0";
+                tmp = tmp + "</p><a herf=\"\0" + (string)space[i].buf + "\" download>Download</a>\0";
+            cerr << tmp << endl;
             if(write(cli_fd, tmp.c_str(), tmp.length())<0)
                 return -1;
         }
