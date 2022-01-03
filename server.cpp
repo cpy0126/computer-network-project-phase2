@@ -254,7 +254,7 @@ int main(int argc, char* argv[]){
                     int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
                     write(me,&(requestP[conn_fd].now),sizeof(package));
                     close(me);
-                    if((requestP[conn_fd].friend_fd=open(my_file.c_str(),O_WRONLY|O_CREAT|O_APPEND))<0)
+                    if((requestP[conn_fd].friend_fd=open(my_file.c_str(),O_WRONLY|O_CREAT|O_APPEND, 0777))<0)
                         perror("open file error: ");
                     if(requestP[conn_fd].user_name==friend_name)
                         continue;
@@ -262,7 +262,7 @@ int main(int argc, char* argv[]){
                     int you=open(my_chat.c_str(),O_WRONLY|O_APPEND);
                     write(you,&(requestP[conn_fd].now),sizeof(package));
                     close(you);
-                    if((requestP[conn_fd].myfile_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT|O_APPEND))<0)
+                    if((requestP[conn_fd].myfile_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT|O_APPEND, 0777))<0)
                         perror("open file error: ");
                     continue;
                 }
