@@ -226,7 +226,7 @@ int main(int argc, char* argv[]){
                 int me=open(friend_name.c_str(),O_WRONLY|O_APPEND);
                 write(me,&(requestP[conn_fd].now),sizeof(package));
                 close(me);
-                cerr << (string)requestP[conn_fd].now.buf << endl;
+                // cerr << (string)requestP[conn_fd].now.buf << endl;
                 if(requestP[conn_fd].user_name==new_friend){
                     set_response(&response,MSS,strlen(succeed),succeed,NULL,NULL);
                     send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
@@ -241,7 +241,7 @@ int main(int argc, char* argv[]){
                 send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 // send(user_names[new_friend],&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
             }
-            else if(requestP[conn_fd].now.type==IMG){   // receve image
+            else if(requestP[conn_fd].now.type==IMG||requestP[conn_fd].now.type==FILES){   // receve image
                 if(requestP[conn_fd].friend_fd==-1&&requestP[conn_fd].myfile_fd==-1){
                     string file_name=(string)(requestP[conn_fd].now.buf);
                     string friend_name=(string)(requestP[conn_fd].now.recver);
@@ -250,10 +250,11 @@ int main(int argc, char* argv[]){
                     string friend_file="./"+requestP[conn_fd].user_name+"/"+friend_name+"/"+file_name;
                     string my_file="./"+friend_name+"/"+requestP[conn_fd].user_name+"/"+file_name;
                     
+                    requestP[conn_fd].filesize=requestP[conn_fd].now.buf_size;
                     int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
                     write(me,&(requestP[conn_fd].now),sizeof(package));
                     close(me);
-                    if((requestP[conn_fd].friend_fd=open(my_file.c_str(),O_WRONLY|O_CREAT))<0)
+                    if((requestP[conn_fd].friend_fd=open(my_file.c_str(),O_WRONLY|O_CREAT|O_APPEND, 0777))<0)
                         perror("open file error: ");
                     if(requestP[conn_fd].user_name==friend_name)
                         continue;
@@ -261,7 +262,7 @@ int main(int argc, char* argv[]){
                     int you=open(my_chat.c_str(),O_WRONLY|O_APPEND);
                     write(you,&(requestP[conn_fd].now),sizeof(package));
                     close(you);
-                    if((requestP[conn_fd].myfile_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT))<0)
+                    if((requestP[conn_fd].myfile_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT|O_APPEND, 0777))<0)
                         perror("open file error: ");
                     continue;
                 }
@@ -273,59 +274,18 @@ int main(int argc, char* argv[]){
                         close(requestP[conn_fd].myfile_fd);
                     requestP[conn_fd].myfile_fd=-1;
                     requestP[conn_fd].friend_fd=-1;
+                    requestP[conn_fd].filesize=0;
                     continue;
                 }
 
-                if(requestP[conn_fd].friend_fd!=-1){
-                    write(requestP[conn_fd].friend_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                int written=0;
+                if(requestP[conn_fd].friend_fd!=-1&&requestP[conn_fd].filesize>0){
+                    written=write(requestP[conn_fd].friend_fd,requestP[conn_fd].now.buf,min(requestP[conn_fd].now.buf_size, requestP[conn_fd].filesize));
                 }
-                if(requestP[conn_fd].myfile_fd!=-1){
-                    write(requestP[conn_fd].myfile_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
+                if(requestP[conn_fd].myfile_fd!=-1&&requestP[conn_fd].filesize>0){
+                    written=write(requestP[conn_fd].myfile_fd,requestP[conn_fd].now.buf,min(requestP[conn_fd].now.buf_size, requestP[conn_fd].filesize));
                 }
-
-            }
-            else if(requestP[conn_fd].now.type==FILES){    // receve file
-                if(requestP[conn_fd].friend_fd==-1&&requestP[conn_fd].myfile_fd==-1){
-                    string file_name=(string)(requestP[conn_fd].now.buf);
-                    string friend_name=(string)(requestP[conn_fd].now.recver);
-                    string friend_chat="./"+requestP[conn_fd].user_name+"/"+friend_name+"/chat";
-                    string my_chat="./"+friend_name+"/"+requestP[conn_fd].user_name+"/chat";
-                    string friend_file="./"+requestP[conn_fd].user_name+"/"+friend_name+"/"+file_name;
-                    string my_file="./"+friend_name+"/"+requestP[conn_fd].user_name+"/"+file_name;
-                    
-                    int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
-                    write(me,&(requestP[conn_fd].now),sizeof(package));
-                    close(me);
-                    if((requestP[conn_fd].friend_fd=open(my_file.c_str(),O_WRONLY|O_CREAT))<0)
-                        perror("open file error: ");
-                    if(requestP[conn_fd].user_name==friend_name)
-                        continue;
-
-                    int you=open(my_chat.c_str(),O_WRONLY|O_APPEND);
-                    write(you,&(requestP[conn_fd].now),sizeof(package));
-                    close(you);
-                    if((requestP[conn_fd].myfile_fd=open(friend_file.c_str(),O_WRONLY|O_CREAT))<0)
-                        perror("open file error: ");
-                    continue;
-                }
-                
-                if(!strcmp(requestP[conn_fd].now.buf,succeed)){
-                    if(requestP[conn_fd].friend_fd!=-1)
-                        close(requestP[conn_fd].friend_fd);
-                    if(requestP[conn_fd].myfile_fd!=-1)
-                        close(requestP[conn_fd].myfile_fd);
-                    requestP[conn_fd].myfile_fd=-1;
-                    requestP[conn_fd].friend_fd=-1;
-                    continue;
-                }
-
-                if(requestP[conn_fd].friend_fd!=-1){
-                    write(requestP[conn_fd].friend_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
-                }
-                if(requestP[conn_fd].myfile_fd!=-1){
-                    write(requestP[conn_fd].myfile_fd,requestP[conn_fd].now.buf,requestP[conn_fd].now.buf_size);
-                }
-                
+                requestP[conn_fd].filesize-=written;
             }
             else if(requestP[conn_fd].now.type==LIST){
                 struct dirent **user_file;
