@@ -584,7 +584,7 @@ int post(string event, int body_size){
             if(space[i].type==IMG)
                 tmp = tmp + "</p><img src=\"\0" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">\0";
             if(space[i].type==FILES)
-                tmp = tmp + "</p><a herf=\"\0" + (string)space[i].buf + "\" download>Download</a>\0";
+                tmp = tmp + "</p><a href=\"\0" + (string)space[i].buf + "\" download>Download</a>\0";
             cerr << tmp << endl;
             if(write(cli_fd, tmp.c_str(), tmp.length())<0)
                 return -1;
