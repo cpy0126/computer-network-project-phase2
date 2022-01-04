@@ -340,9 +340,7 @@ int get(string path, int extra){
         if(read_package(pkg)<0) return -1;
         if(write(cli_fd, pkg.buf, pkg.buf_size)<0) return -1;
         filesize -= pkg.buf_size;
-        cerr << filesize << " ";
     }
-    cerr << endl;
     cerr << "get finished" << endl;
 
     return 0;
@@ -482,10 +480,12 @@ int post(string event, int body_size){
         time(&pkg.Time);
         filename = to_string(pkg.Time) + filename;
         cerr << "filename: " << filename << endl;
+        cerr << boundary.length() << endl;
+        cerr << boundary << endl;
         pkg = package(IMG, filename, user, target);
 
         body_size -= headsize;
-        pkg.buf_size = body_size - boundary.length() - 2;
+        pkg.buf_size = body_size - boundary.length() - 4;
         if(write_package(pkg)<0) return -1;
         cerr << pkg.buf_size << endl;
         while(body_size>0){
@@ -529,7 +529,7 @@ int post(string event, int body_size){
         pkg = package(FILES, filename, user, target);
 
         body_size -= headsize;
-        pkg.buf_size = body_size - boundary.length() - 2;
+        pkg.buf_size = body_size - boundary.length() - 4;
         if(write_package(pkg)<0) return -1;
         cerr << pkg.buf_size << endl;
         while(body_size>0){
