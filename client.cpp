@@ -37,12 +37,10 @@ string set_header(int content_len, string filetype, string extra){
 
 string header404 ="\
 HTTP/1.1 404 Bad Request\r\n\
-Server: jdbhttpd/0.1.0\r\n\
-Content-Length: 169\r\n\
+Content-Length: 124\r\n\
 Content-Type: text/html\r\n\
 Connection: Closed\r\n\r\n\
-<html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center>\
-<hr><center>nginx/0.8.54</center></body></html>";
+<html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center></body></html>";
 string used = "<html><h2>Username used or illegal, please choose another</h2></html>", user, target;
 string shead, boundary;
 map<string, string> mmap;
