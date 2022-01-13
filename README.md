@@ -12,4 +12,6 @@
 
 - [ ] not return -1 every situation (etc. write header404 to browser when upload failed)
 
-- [ ] favicon.ico
+- [x] favicon.ico
+
+- [ ] send 404 correctly
