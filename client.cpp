@@ -52,6 +52,7 @@ void inline_init(){
     mmap["jpg"] = "image/jpeg";
     mmap["jpeg"] = "image/jpeg";
     mmap["png"] = "image/png";
+    mmap["ico"] = "image/png";
     mmap["gif"] = "image/gif";
     mmap["mp4"] = "video/mp4";
     mmap["mp3"] = "audio/mp3";
@@ -91,7 +92,7 @@ int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
 int filesize;
 vector<struct package> space;
 
-int index();
+int login();
 int get(string path, int extra);
 int post(string event, int body_size);
 
@@ -155,7 +156,7 @@ int handle_http(){
     if(method=="GET"){
         if(reqpath=="/"){
             if(logflag==1) return get("/homepage.html", 0);
-            return (index());
+            return (login());
         }
         else
             return get(reqpath, 0);
@@ -258,50 +259,46 @@ int main(int argc, char* argv[]){
     }
 }
 
-int index(){
+int login(){
     if(logflag==1) return get("/homepage.html", 0);
-    int file_fd = open("./template/index.html", O_RDONLY), res;
-    string header = "text/html";
-    if(file_fd<0)
+    package pkg(GET, "/index.html");
+    
+    cerr << "path = /index.html" << endl;
+    strncpy(pkg.sender, ((string)"..").c_str(), 2);
+    strncpy(pkg.recver, ((string)"template").c_str(), 8);
+    
+    if(write_package(pkg)<0) return -1;
+    if(read_package(pkg)<0) return -1;
+
+    if((string)pkg.buf=="Failed")
         return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
-    filesize = lseek(file_fd, 0, SEEK_END);
-    if(filesize<0){
-        close(file_fd);
-        return -1;
-    }
-    lseek(file_fd, 0, SEEK_SET);
-    string tmp = "";
-    if(logflag==-1) header = set_header(filesize+used.length(), header, tmp);
-    else header = set_header(filesize, header, tmp);
-    while((res = write(cli_fd, header.c_str(), header.length()))<0){
-        if(res<0 && errno==EAGAIN) continue;
-        close(file_fd);
-        return -1;
-    }
+    
+    int filesize = atoi(pkg.buf);
+    string header = "text/html";
+
+    if(logflag==-1) header = set_header(filesize+used.length(), header, "");
+    else header = set_header(filesize, header, "");
+    if(write(cli_fd, header.c_str(), header.length())<0) return -1;
+    
+    cerr << filesize << " ";
     while(filesize>0){
-        while((res = read(file_fd, buf, filesize))<=0){
-            if(res<0 && errno==EAGAIN) continue;
-            break;
-        }
-        while((res = write(cli_fd, buf, res))<0){
-            if(res<0 && errno==EAGAIN) continue;
-            break;
-        }
-        filesize -= res;
+        memset(pkg.buf, 0, sizeof(pkg.buf));
+        if(read_package(pkg)<0) return -1;
+        if(write(cli_fd, pkg.buf, pkg.buf_size)<0) return -1;
+        filesize -= pkg.buf_size;
     }
-    close(file_fd);
-    if(res<0) return -1;
-    if(logflag<0)
-        while((res = write(cli_fd, used.c_str(), used.length()))<0){
-            if(res<0 && errno==EAGAIN) continue;
+    
+    if(logflag==-1)
+        while(write(cli_fd, used.c_str(), used.length())<0 && errno==EAGAIN)
             return -1;
-        }
+    
+    cerr << "get finished" << endl;
     return 0;
 }
 
 int get(string path, int extra){
 
-    if(logflag!=1) return index();
+    if(logflag!=1 && path!="/favicon.ico") return login();
     package pkg(GET, path);
     
     cerr << "path = " << path << endl;
@@ -357,7 +354,7 @@ int post(string event, int body_size){
         for(int i=0;i<name.length();++i){
             if(isalnum(name[i])) continue;
             logflag = -1;
-            return index();
+            return login();
         }
 
         package pkg(LOGIN, name);
@@ -367,7 +364,7 @@ int post(string event, int body_size){
         if(((string)pkg.buf)=="Succeeed") logflag = 1, user = name;
         else logflag = -1;
 
-        return index();
+        return login();
     }
     if(event=="/list_friend"){
         package pkg;
