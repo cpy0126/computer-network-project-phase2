@@ -305,7 +305,7 @@ int get(string path, int extra){
     package pkg(GET, path);
     
     cerr << "path = " << path << endl;
-    if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html"){
+    if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html" || path=="/favicon.ico"){
         strncpy(pkg.sender, ((string)"..").c_str(), 2);
         strncpy(pkg.recver, ((string)"template").c_str(), 8);
     }
