@@ -29,7 +29,7 @@ using namespace std;
 
 string set_header(int content_len, string filetype, string extra){
     string header;
-    header = "HTTP/1.1 200 OK\r\nServer: jdbhttpd/0.1.0\r\nContent-Length: " + to_string(content_len);
+    header = "HTTP/1.1 200 OK\r\nContent-Length: " + to_string(content_len);
     header = header + "\r\nContent-Type: " + filetype + "\r\nConnection: keep-alive\r\n";
     header = header + extra + "\r\n";
     return header;
@@ -37,7 +37,7 @@ string set_header(int content_len, string filetype, string extra){
 
 string header404 ="\
 HTTP/1.1 404 Bad Request\r\n\
-Content-Length: 124\r\n\
+Content-Length: 122\r\n\
 Content-Type: text/html\r\n\
 Connection: Closed\r\n\r\n\
 <html><head><title>404 Not Found</title></head><body bgcolor=\"white\"><center><h1>404 Not Found</h1></center></body></html>";
@@ -109,7 +109,7 @@ int read_package(package &pkg){
 
 int write_package(package &pkg){
     int res;
-    while((res = write(sock_fd, &pkg, sizeof(package)))<0){
+    while((res = send(sock_fd, &pkg, sizeof(package), MSG_NOSIGNAL))<0){
         if(res<0 && errno==EAGAIN) continue;
         return -1;
     }
@@ -230,7 +230,7 @@ int main(int argc, char* argv[]){
         int clilen = sizeof(cliaddr);
         if((cli_fd = accept(http_fd, (struct sockaddr*) &cliaddr, (socklen_t*) &clilen)) < 0) continue;
         if(logflag==-1)
-            if(write(cli_fd, header404.c_str(), header404.length())<0){
+            if(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0){
                 close(cli_fd);
                 logflag = -1;
                 continue;
@@ -261,7 +261,6 @@ int login(){
     if(logflag==1) return get("/homepage.html", 0);
     package pkg(GET, "/index.html");
     
-    cerr << "path = /index.html" << endl;
     strncpy(pkg.sender, ((string)"..").c_str(), 2);
     strncpy(pkg.recver, ((string)"template").c_str(), 8);
     
@@ -269,28 +268,30 @@ int login(){
     if(read_package(pkg)<0) return -1;
 
     if((string)pkg.buf=="Failed")
-        return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
+        return send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0? -1 : 0;
     
     int filesize = atoi(pkg.buf);
     string header = "text/html";
 
     if(logflag==-1) header = set_header(filesize+used.length(), header, "");
     else header = set_header(filesize, header, "");
-    if(write(cli_fd, header.c_str(), header.length())<0) return -1;
+    if(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0) return -1;
     
-    cerr << filesize << " ";
     while(filesize>0){
         memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        if(write(cli_fd, pkg.buf, pkg.buf_size)<0) return -1;
+        if(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0) return -1;
         filesize -= pkg.buf_size;
     }
     
-    if(logflag==-1)
-        while(write(cli_fd, used.c_str(), used.length())<0 && errno==EAGAIN)
+    if(logflag==-1){
+        int res;
+        while((res=send(cli_fd, used.c_str(), used.length(), MSG_NOSIGNAL))<0){
+            if(errno==EAGAIN) continue;
             return -1;
+        }
+    }
     
-    cerr << "get finished" << endl;
     return 0;
 }
 
@@ -299,8 +300,7 @@ int get(string path, int extra){
     if(logflag!=1 && path!="/favicon.ico") return login();
     package pkg(GET, path);
     
-    cerr << "path = " << path << endl;
-    if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html" || path=="/favicon.ico"){
+    if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html" || path=="/favicon.ico" || user=="" || target==""){
         strncpy(pkg.sender, ((string)"..").c_str(), 2);
         strncpy(pkg.recver, ((string)"template").c_str(), 8);
     }
@@ -312,7 +312,7 @@ int get(string path, int extra){
     if(write_package(pkg)<0) return -1;
     if(read_package(pkg)<0) return -1;
 
-    if((string)pkg.buf=="Failed")
+    if((string)pkg.buf=="-1")
         return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
 
     filesize = atoi(pkg.buf);
@@ -324,19 +324,16 @@ int get(string path, int extra){
             header = mmap[path.substr(res+1)];
             extra_header = "";
         }
-    cerr << "Content_type: " << header << endl;
 
     header = set_header(filesize + extra, header, extra_header);
-    if(write(cli_fd, header.c_str(), header.length())<0) return -1;
+    if(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0) return -1;
     
-    cerr << filesize << " ";
     while(filesize>0){
         memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        if(write(cli_fd, pkg.buf, pkg.buf_size)<0) return -1;
+        if(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0) return -1;
         filesize -= pkg.buf_size;
     }
-    cerr << "get finished" << endl;
 
     return 0;
 }
@@ -384,7 +381,7 @@ int post(string event, int body_size){
         
         for(int i=0;i<num;++i){
             tmp = "<p>" + (string)space[i].buf + "</p>";
-            if(write(cli_fd, tmp.c_str(), tmp.length())<0) return -1;
+            if(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0) return -1;
         }
 
         return 0;
@@ -434,6 +431,7 @@ int post(string event, int body_size){
         return get("/homepage.html", 0);
     }
     if(event=="/homepage"){
+        target = "";
         return get("/homepage.html", 0);
     }
     if(event=="/send_message"){
@@ -579,10 +577,12 @@ int post(string event, int body_size){
             if(space[i].type==FILES)
                 tmp = tmp + "</p><a href=\"\0" + (string)space[i].buf + "\" download>Download</a>\0";
             cerr << tmp << endl;
-            if(write(cli_fd, tmp.c_str(), tmp.length())<0)
+            while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
+                if(errno==EAGAIN) continue;
                 return -1;
+            }
         }
         return 0;
     }
-    return -1;
+    return (send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0)? -1:0;
 }
