@@ -532,12 +532,13 @@ int post(string event, int body_size){
         filename = tmp.substr(res+10);
         res = filename.find("\r\n");
         filename = filename.substr(0, res-1);
+        string orgfilename = filename + "\n";
         res = filename.rfind(".");
         filename = filename.substr(res);
         package pkg;
         time(&pkg.Time);
-        filename = to_string(pkg.Time) + filename;
-        cerr << "filename: " << filename << endl;
+        filename = orgfilename + to_string(pkg.Time) + filename;
+        cerr << "filename: " << orgfilename << endl;
         pkg = package(FILES, filename, user, target);
 
         body_size -= headsize;
@@ -581,12 +582,13 @@ int post(string event, int body_size){
             if(pkg.type==IMG)
                 extra += ((string)pkg.buf).length() + 57; 
             if(pkg.type==FILES)
-                extra += ((string)pkg.buf).length() + 42;
+                extra += ((string)pkg.buf).length() + 33;
         }
         
         extra += ((string)pkg.sender).length() * (int)space.size();
         if(get("/chatroom.html",extra)<0) return -1;
         cerr << (int)space.size() << endl;
+        string nname, oname;
         
         for(int i=0;i<((int)space.size());++i){
             tmp = "<p>" + (string)space[i].sender + " : \0";
@@ -594,8 +596,12 @@ int post(string event, int body_size){
                 tmp = tmp + (string)space[i].buf + "</p>\0";
             if(space[i].type==IMG)
                 tmp = tmp + "</p><img src=\"\0" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">\0";
-            if(space[i].type==FILES)
-                tmp = tmp + "</p><a href=\"\0" + (string)space[i].buf + "\" download>Download</a>\0";
+            if(space[i].type==FILES){
+                nname = oname = ((string)space[i].buf);
+                res = nname.find("\n");
+                nname = nname.substr(res+1), oname = oname.substr(0,res);
+                tmp = tmp + "</p><a href=\"\0" + nname + "\" download>" + oname + "</a>\0";
+            }
             while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
                 if(errno==EAGAIN) continue;
                 return -1;
