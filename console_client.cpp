@@ -173,7 +173,8 @@ int main(int argc, char* argv[]){
     if(connect(sock_fd, (struct sockaddr*) &servaddr, sizeof(servaddr)) < 0) ERR("connect()")
 
     //HTTP server
-    
+    mkdir("client_dir",077);
+    chdir("./client_dir");
     fd_set read_OK;
     cout<<"Welcome to cHatrOoM\nPlase enter your username:\n";
     while(1){
