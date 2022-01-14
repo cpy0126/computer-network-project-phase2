@@ -296,13 +296,69 @@ int main(int argc, char* argv[]){
                     show_his("30");
                 }
                 else if(act==2){
-                    
+                    string filename = commend.substr(2);
+                    int file=open(filename.c_str(),O_RDONLY);
+                    if(file<0){
+                        cout<<"No such image "<<endl;
+                    }
+                    int file_size=lseek(file,0,SEEK_END);
+                    lseek(file,0,SEEK_SET);
+
+                    package pkg;
+                    time(&pkg.Time);
+                    filename = to_string(pkg.Time) + filename;
+                    pkg = package(IMG, filename, username, target);
+                    pkg.buf_size=file_size;
+                    if(write_package(pkg)<0) return -1;
+                    while(file_size>0){
+                        memset(pkg.buf, 0, sizeof(pkg.buf));
+                        while((res = read(file, &pkg.buf, min(2048, file_size)))<=0){
+                            if(errno==EAGAIN) continue;
+                            perror("reading file error: ");
+                        }
+                        pkg.buf_size = res;
+                        if(write_package(pkg)<0) perror("writing file error: ");
+                        file_size -= res;
+                    }
+                    pkg = package(IMG, (string)"Succeeed", username, target);
+                    if(write_package(pkg)<0) perror("writing file error: ");
+                    //read buf and then send 2 server
+                    show_chat(target);
+                    show_his("30");
                 }
                 else if(act==3){
-                    
+                    string filename = commend.substr(2);
+                    int file=open(filename.c_str(),O_RDONLY);
+                    if(file<0){
+                        cout<<"No such image "<<endl;
+                    }
+                    int file_size=lseek(file,0,SEEK_END);
+                    lseek(file,0,SEEK_SET);
+
+                    package pkg;
+                    time(&pkg.Time);
+                    filename = to_string(pkg.Time) + filename;
+                    pkg = package(FILES, filename, username, target);
+                    pkg.buf_size=file_size;
+                    if(write_package(pkg)<0) return -1;
+                    while(file_size>0){
+                        memset(pkg.buf, 0, sizeof(pkg.buf));
+                        while((res = read(file, &pkg.buf, min(2048, file_size)))<=0){
+                            if(errno==EAGAIN) continue;
+                            perror("reading file error: ");
+                        }
+                        pkg.buf_size = res;
+                        if(write_package(pkg)<0) perror("writing file error: ");
+                        file_size -= res;
+                    }
+                    pkg = package(FILES, (string)"Succeeed", username, target);
+                    if(write_package(pkg)<0) perror("writing file error: ");
+                    //read buf and then send 2 server
+                    show_chat(target);
+                    show_his("30");
                 }
                 else if(act==6){
-                    
+
                 }
                 else{
                     bad_commend();
