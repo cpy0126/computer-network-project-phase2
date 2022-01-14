@@ -244,6 +244,8 @@ int main(int argc, char* argv[]){
             else if(requestP[conn_fd].now.type==IMG||requestP[conn_fd].now.type==FILES){   // receve image
                 if(requestP[conn_fd].friend_fd==-1&&requestP[conn_fd].myfile_fd==-1){
                     string file_name=(string)(requestP[conn_fd].now.buf);
+                    if(file_name.find("\n")!=-1)
+                        file_name[file_name.find("\n")]='\0';
                     string friend_name=(string)(requestP[conn_fd].now.recver);
                     string friend_chat="./"+requestP[conn_fd].user_name+"/"+friend_name+"/chat";
                     string my_chat="./"+friend_name+"/"+requestP[conn_fd].user_name+"/chat";
