@@ -233,12 +233,6 @@ int main(int argc, char* argv[]){
         cli_fd = -1;
         int clilen = sizeof(cliaddr);
         if((cli_fd = accept(http_fd, (struct sockaddr*) &cliaddr, (socklen_t*) &clilen)) < 0) continue;
-        if(logflag==-1)
-            if(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0){
-                close(cli_fd);
-                logflag = -1;
-                continue;
-            }
         
         while(1){
             FD_ZERO(&read_OK);
@@ -248,7 +242,7 @@ int main(int argc, char* argv[]){
                 if(handle_http()<0){
                     perror("handle_http");
                     close(cli_fd);
-                    logflag = -1;
+                    logflag = 0;
                     break;
                 }
             }
