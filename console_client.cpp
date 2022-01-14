@@ -107,6 +107,7 @@ void show_chat(string name){
     (3) Send file message\n\
     (4) Update chat history\n\
     (5) Back to Homepage\n\
+    (6) Download file or image from chatroom\n\
     Please enter your commend like Ex: \"4\" or \"5\" or \"1 hello\" or \"2 kkk.pdf\"\n";
 }
 
@@ -298,6 +299,9 @@ int main(int argc, char* argv[]){
                     
                 }
                 else if(act==3){
+                    
+                }
+                else if(act==6){
                     
                 }
                 else{
