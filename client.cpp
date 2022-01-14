@@ -99,7 +99,7 @@ int read_package(package &pkg){
     memset(pkg.buf, 0, sizeof(pkg.buf));
     while(tmp!=sizeof(package)){
         while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
-            if(res<0 && errno==EAGAIN) continue;
+            if(errno==EAGAIN) continue;
             return -1;
         }
         tmp += res;
@@ -110,7 +110,7 @@ int read_package(package &pkg){
 int write_package(package &pkg){
     int res;
     while((res = send(sock_fd, &pkg, sizeof(package), MSG_NOSIGNAL))<0){
-        if(res<0 && errno==EAGAIN) continue;
+        if(errno==EAGAIN) continue;
         return -1;
     }
     return 0;
@@ -135,8 +135,8 @@ int handle_http(){
     string method, reqpath;
     shead = "";
     while(1){
-        if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
-        if(!res) return -1;
+        if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
+        if(res<=0) return -1;
         cur = head_buf[headsize];
         ++headsize;
         if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -175,7 +175,11 @@ int handle_http(){
         }
         return post(reqpath, body_size);
     }
-    return -1;
+    while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+        if(errno==EAGAIN) continue;
+        return -1;
+    }
+    return 0;
 }
 
 int main(int argc, char* argv[]){
@@ -239,12 +243,7 @@ int main(int argc, char* argv[]){
         while(1){
             FD_ZERO(&read_OK);
             FD_SET(cli_fd, &read_OK);
-            //FD_SET(cli_fd, &read_OK), FD_SET(sock_fd, &read_OK);
             select(cli_fd+1, &read_OK, NULL, NULL, NULL);
-            /*
-            if(FD_ISSET(sock_fd, &read_OK))
-                if(handle_server()<0) break;
-            */
             if(FD_ISSET(cli_fd, &read_OK)){
                 if(handle_http()<0){
                     perror("handle_http");
@@ -258,6 +257,7 @@ int main(int argc, char* argv[]){
 }
 
 int login(){
+    int res;
     if(logflag==1) return get("/homepage.html", 0);
     package pkg(GET, "/index.html");
     
@@ -275,30 +275,36 @@ int login(){
 
     if(logflag==-1) header = set_header(filesize+used.length(), header, "");
     else header = set_header(filesize, header, "");
-    if(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0) return -1;
+    while((res=send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL))<0){
+        if(errno==EAGAIN) continue;
+        return -1;
+    }
     
     while(filesize>0){
         memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        if(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0) return -1;
+        while((res=send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL))<0){
+            if(errno==EAGAIN) continue;
+            return -1;
+        }
         filesize -= pkg.buf_size;
     }
     
     if(logflag==-1){
-        int res;
         while((res=send(cli_fd, used.c_str(), used.length(), MSG_NOSIGNAL))<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
+        logflag=0;
     }
     
     return 0;
 }
 
 int get(string path, int extra){
-
     if(logflag!=1 && path!="/favicon.ico") return login();
     package pkg(GET, path);
+    int res;
     
     if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html" || path=="/favicon.ico" || user=="" || target==""){
         strncpy(pkg.sender, ((string)"..").c_str(), 2);
@@ -312,11 +318,16 @@ int get(string path, int extra){
     if(write_package(pkg)<0) return -1;
     if(read_package(pkg)<0) return -1;
 
-    if((string)pkg.buf=="-1")
-        return write(cli_fd, header404.c_str(), header404.length())<0? -1 : 0;
+    if((string)pkg.buf=="-1"){
+        while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+            if(errno==EAGAIN) continue;
+            return -1;
+        }
+        return 0;
+    }
 
     filesize = atoi(pkg.buf);
-    int res = path.rfind(".");
+    res = path.rfind(".");
     string header = "text/plain";
     string extra_header = "Content-Disposition: attachment; filename=\"" + path + "\"\r\n";
     if(res!=-1)
@@ -326,12 +337,18 @@ int get(string path, int extra){
         }
 
     header = set_header(filesize + extra, header, extra_header);
-    if(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0) return -1;
+    while((res=send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL))<0){
+        if(errno==EAGAIN) continue;
+        return -1;
+    }
     
     while(filesize>0){
         memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        if(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0) return -1;
+        while((res=send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL))<0){
+            if(errno==EAGAIN) continue;
+            return -1;
+        }
         filesize -= pkg.buf_size;
     }
 
@@ -381,7 +398,10 @@ int post(string event, int body_size){
         
         for(int i=0;i<num;++i){
             tmp = "<p>" + (string)space[i].buf + "</p>";
-            if(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0) return -1;
+            while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
+                if(errno==EAGAIN) continue;
+                return -1;
+            }
         }
 
         return 0;
@@ -455,8 +475,8 @@ int post(string event, int body_size){
         headsize = 0;
         memset(head_buf, 0, sizeof(head_buf));
         while(1){
-            if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
-            if(!res) return -1;
+            if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
+            if(res<=0) return -1;
             cur = head_buf[headsize];
             ++headsize;
             if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -481,7 +501,10 @@ int post(string event, int body_size){
         cerr << pkg.buf_size << endl;
         while(body_size>0){
             memset(pkg.buf, 0, sizeof(pkg.buf));
-            if((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<0) return -1;
+            while((res = read(cli_fd, &pkg.buf, min(2048, body_size)))<=0){
+                if(errno==EAGAIN) continue;
+                return -1;
+            }
             pkg.buf_size = res;
             if(write_package(pkg)<0) return -1;
             body_size -= res;
@@ -499,8 +522,8 @@ int post(string event, int body_size){
         headsize = 0;
         memset(head_buf, 0, sizeof(head_buf));
         while(1){
-            if((res = read(cli_fd, head_buf+headsize, 1))<0) continue;
-            if(!res) return -1;
+            if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
+            if(res<=0) return -1;
             cur = head_buf[headsize];
             ++headsize;
             if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -584,5 +607,9 @@ int post(string event, int body_size){
         }
         return 0;
     }
-    return (send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0)? -1:0;
+    while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+        if(errno==EAGAIN) continue;
+        return -1;
+    }
+    return 0;
 }
