@@ -136,7 +136,7 @@ int handle_http(){
     shead = "";
     while(1){
         if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
-        if(res<=0) return -1;
+        if(res<=0) return res;
         cur = head_buf[headsize];
         ++headsize;
         if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -168,8 +168,8 @@ int handle_http(){
             return post(reqpath, body_size);
         memset(buf, 0, sizeof(char)*(body_size+10));
         while(body_size>0){
-            //need to check connection with server
-            if((res = read(cli_fd, buf+bufsize, body_size))<0) continue;
+            if((res = read(cli_fd, buf+bufsize, body_size))<0 && errno==EAGAIN) continue;
+            if(res<=0) return res;
             bufsize += res;
             body_size -= res;
         }
@@ -239,12 +239,12 @@ int main(int argc, char* argv[]){
             FD_SET(cli_fd, &read_OK);
             select(cli_fd+1, &read_OK, NULL, NULL, NULL);
             if(FD_ISSET(cli_fd, &read_OK)){
-                if(handle_http()<0){
+                if(handle_http()==-1){
                     perror("handle_http");
-                    close(cli_fd);
                     logflag = 0;
-                    break;
                 }
+                close(cli_fd);
+                break;
             }
         }
     }
@@ -470,7 +470,7 @@ int post(string event, int body_size){
         memset(head_buf, 0, sizeof(head_buf));
         while(1){
             if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
-            if(res<=0) return -1;
+            if(res<=0) return res;
             cur = head_buf[headsize];
             ++headsize;
             if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -515,7 +515,7 @@ int post(string event, int body_size){
         memset(head_buf, 0, sizeof(head_buf));
         while(1){
             if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
-            if(res<=0) return -1;
+            if(res<=0) return res;
             cur = head_buf[headsize];
             ++headsize;
             if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -532,7 +532,6 @@ int post(string event, int body_size){
         package pkg;
         time(&pkg.Time);
         filename = orgfilename + to_string(pkg.Time) + filename;
-        cerr << "filename: " << orgfilename << endl;
         pkg = package(FILES, filename, user, target);
 
         body_size -= headsize;
