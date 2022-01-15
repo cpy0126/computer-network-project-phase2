@@ -15,11 +15,12 @@
 #include<map>
 using namespace std;
 
-#define ERR(a) {perror(a); return EXIT_FAILURE;}
+#define ERR(a) {perror(a); exit(1);}
 #define IMG 100
 #define FILES 200
 #define MSS 300
 #define LOGIN 400
+#define LOGOUT -400
 #define ADD 500
 #define DEL 600
 #define LIST 700
@@ -34,9 +35,7 @@ struct package{
     int type, buf_size;
     char buf[2048], sender[64], recver[64];
     time_t Time;
-    package(){
-        Time = time(NULL);    
-    }
+    package(){}
     package(int _type, string buffer){
         memset(buf, 0, sizeof(buf));
         memset(sender, 0, sizeof(sender));
@@ -61,7 +60,7 @@ struct package{
 
 char buf[100000],head_buf[10000];
 char succeed[16]="Succeeed", failed[8]="Failed";
-int bufsize,headsize,sock_fd,http_fd,cli_fd,logflag;
+int bufsize,headsize,sock_fd,http_fd,cli_fd;
 int filesize;
 string username, target;
 
@@ -71,14 +70,15 @@ int post(string event, int body_size);
 
 int read_package(package &pkg){
     int tmp = 0, res;
-    memset(pkg.buf, 0, sizeof(pkg.buf));
-    while(tmp!=sizeof(package)){
-        while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
+    memset(buf, 0, sizeof(package));
+    while(tmp<sizeof(package)){
+        while((res = read(sock_fd, buf+tmp, sizeof(package)-tmp))<=0){
             if(errno==EAGAIN) continue;
             return -1;
         }
         tmp += res;
     }
+    memcpy(&pkg, buf, sizeof(package));
     return 0;
 }
 
@@ -96,7 +96,8 @@ void show_home(){
     (1) List all friends\n\
     (2) Add friend\n\
     (3) Delete friend\n\
-    (4) Chat with one friendn\n\
+    (4) Chat with one friend\n\
+    (5) exit\n\
     Please enter your commend like Ex: \"4 Bob\" or \"1\" or \"2 Alice\"\n";
 }
 void show_chat(string name){
@@ -107,26 +108,61 @@ void show_chat(string name){
     (3) Send file message\n\
     (4) Update chat history\n\
     (5) Back to Homepage\n\
-    (6) Download file or image from chatroom\n\
+    (6) exit\n\
     Please enter your commend like Ex: \"4\" or \"5\" or \"1 hello\" or \"2 kkk.pdf\"\n";
 }
 
 void show_his(string size){
     int latest = stoi(size);
     package pkg(HIS, size, username, target);
-    if(write_package(pkg)<0) perror("HIS wr error: ");
+    if(write_package(pkg)<0) ERR("HIS wr error: ")
     int extra = 0;
     show_chat(target);
+    vector<package> downloadlist;
     while(1){
-        if(read_package(pkg)<0) perror("HIS rd error: ");
+        if(read_package(pkg)<0) ERR("HIS rd error: ")
         if(pkg.type==HIS) break;
-        cout<<pkg.sender<<" : ";
+        cout<<(string)pkg.sender<<" : ";
         if(pkg.type==MSS)
-            cout<<pkg.buf<<endl;
-        if(pkg.type==IMG)
-            cout<<"IMG  "<<pkg.buf<<endl;
-        if(pkg.type==FILES)
-            cout<<"FILES  "<<pkg.buf<<endl;
+            cout<<(string)pkg.buf<<endl;
+        if(pkg.type==IMG){
+            cout<<"[IMG  "<<(string)pkg.buf<<"]"<<endl;
+            downloadlist.push_back(pkg);
+        }
+        if(pkg.type==FILES){
+            string tmp = (string)pkg.buf;
+            int res = tmp.find("\n");
+            tmp = tmp.substr(res+1);
+            memset(pkg.buf, 0, sizeof(pkg.buf));
+            strncpy(pkg.buf, tmp.c_str(), tmp.length());
+            cout<<"[FILES  "<<(string)pkg.buf<<"]"<<endl;
+            downloadlist.push_back(pkg);
+        }
+    }
+    for(int i=0;i<((int)downloadlist.size());++i){
+        cerr << "downloading" << downloadlist[i].buf << endl;
+        package pkg(GET, (string)downloadlist[i].buf);
+        int res;
+                    
+        strncpy(pkg.sender, username.c_str(), username.length());
+        strncpy(pkg.recver, target.c_str(), target.length());
+
+        if(write_package(pkg)<0) ERR("download wr error: ")
+        if(read_package(pkg)<0) ERR("download rd error: ")
+
+        if((string)pkg.buf=="-1"){
+            cout<<"error occur when taking file\n";
+        }
+
+        filesize = atoi(pkg.buf);
+        int fd=open(downloadlist[i].buf,O_CREAT|O_WRONLY, 0777);
+                    
+        while(filesize>0){
+            memset(pkg.buf, 0, sizeof(pkg.buf));
+            if(read_package(pkg)<0) ERR("Getting package error: ")
+            write(fd,pkg.buf,pkg.buf_size);
+            filesize -= pkg.buf_size;
+        }
     }
 }
 
@@ -174,7 +210,7 @@ int main(int argc, char* argv[]){
     if(connect(sock_fd, (struct sockaddr*) &servaddr, sizeof(servaddr)) < 0) ERR("connect()")
 
     //HTTP server
-    mkdir("client_dir",077);
+    mkdir("client_dir",0777);
     chdir("./client_dir");
     fd_set read_OK;
     cout<<"Welcome to cHatrOoM\nPlase enter your username:\n";
@@ -201,15 +237,13 @@ int main(int argc, char* argv[]){
     show_home();
     int status=1;   // 1 at homepage 2 at chatroom;
     while(1){
-        if(logflag==-1)
-            exit(0);
         string commend;
         getline(cin,commend);
         if(status==1){
             if(commend=="1"){
                 package pkg; pkg.type = LIST;
-                if(write_package(pkg)<0) perror("LIST wr error: ");
-                if(read_package(pkg)<0) perror("LIST rd error: ");
+                if(write_package(pkg)<0) ERR("LIST wr error: ")
+                if(read_package(pkg)<0) ERR("LIST rd error: ")
 
                 string tmp = (string) pkg.buf;
                 res = tmp.find(" ");
@@ -218,9 +252,14 @@ int main(int argc, char* argv[]){
                 cout<<"Friend name list: \n";
                 for(int i=0;i<num;++i){
                     if(read_package(pkg)<0) return -1;
-                    cout<<"    "<<pkg.buf<<endl;
+                    cout<<"    "<<(string)pkg.buf<<endl;
                 }
                 
+            }
+            else if(commend=="5"){
+                package pkg(LOGOUT, "");
+                write_package(pkg);
+                exit(0);
             }
             else{
                 int space=commend.find(" ");
@@ -232,28 +271,28 @@ int main(int argc, char* argv[]){
                 if(act==2){
                     string name=commend.substr(2);
                     package pkg(ADD, name);
-                    if(write_package(pkg)<0) perror("ADD wr error: ");
-                    if(read_package(pkg)<0) perror("ADD rd error: ");
+                    if(write_package(pkg)<0) ERR("ADD wr error: ")
+                    if(read_package(pkg)<0) ERR("ADD rd error: ")
                     show_home();
                 }
                 else if(act==3){
                     string name=commend.substr(2);
                     package pkg(CHECK, name);
-                    if(write_package(pkg)<0) perror("DEL che wr error: ");
-                    if(read_package(pkg)<0) perror("DEL che rd error: ");;
+                    if(write_package(pkg)<0) ERR("DEL che wr error: ")
+                    if(read_package(pkg)<0) ERR("DEL che rd error: ")
 
                     if(((string)pkg.buf)=="Succeeed"){
                         pkg = package(DEL, name);
-                        if(write_package(pkg)<0) perror("DEL wr error: ");
-                        if(read_package(pkg)<0) perror("DEL rd error: ");
+                        if(write_package(pkg)<0) ERR("DEL wr error: ")
+                        if(read_package(pkg)<0) ERR("DEL rd error: ")
                     }
                     show_home();
                 }
                 else if(act==4){
                     string name=commend.substr(2);
                     package pkg(CHECK, name);
-                    if(write_package(pkg)<0) perror("CHECK write error: ");
-                    if(read_package(pkg)<0) perror("CHECK read error: ");
+                    if(write_package(pkg)<0) ERR("CHECK write error: ")
+                    if(read_package(pkg)<0) ERR("CHECK read error: ")
                     if(((string)pkg.buf)=="Succeeed"){
                         target = name;
                         status=2;
@@ -281,6 +320,11 @@ int main(int argc, char* argv[]){
                 status=1;
                 show_home();
             }
+            else if(commend=="6"){
+                package pkg(LOGOUT, "");
+                write_package(pkg);
+                exit(0);
+            }
             else{
                 int space=commend.find(" ");
                 if(space!=1){
@@ -291,8 +335,8 @@ int main(int argc, char* argv[]){
                 if(act==1){
                     string content = commend.substr(2);
                     package pkg(MSS, content, username, target);
-                    if(write_package(pkg)<0) perror("send mss wr error: ");
-                    if(read_package(pkg)<0) perror("send mss rd error: ");
+                    if(write_package(pkg)<0) ERR("send mss wr error: ")
+                    if(read_package(pkg)<0) ERR("send mss rd error: ")
                 }
                 else if(act==2){
                     string filename = commend.substr(2);
@@ -304,6 +348,8 @@ int main(int argc, char* argv[]){
                     int file_size=lseek(file,0,SEEK_END);
                     lseek(file,0,SEEK_SET);
 
+                    res = filename.rfind(".");
+                    filename = filename.substr(res);
                     package pkg;
                     time(&pkg.Time);
                     filename = to_string(pkg.Time) + filename;
@@ -314,15 +360,14 @@ int main(int argc, char* argv[]){
                         memset(pkg.buf, 0, sizeof(pkg.buf));
                         while((res = read(file, &pkg.buf, min(2048, file_size)))<=0){
                             if(errno==EAGAIN) continue;
-                            perror("reading file error: ");
+                            ERR("reading file error: ")
                         }
                         pkg.buf_size = res;
-                        if(write_package(pkg)<0) perror("writing file error: ");
+                        if(write_package(pkg)<0) ERR("writing file error: ")
                         file_size -= res;
                     }
                     pkg = package(IMG, (string)"Succeeed", username, target);
-                    if(write_package(pkg)<0) perror("writing file error: ");
-                    //read buf and then send 2 server
+                    if(write_package(pkg)<0) ERR("writing file error: ")
                 }
                 else if(act==3){
                     string filename = commend.substr(2);
@@ -334,9 +379,12 @@ int main(int argc, char* argv[]){
                     int file_size=lseek(file,0,SEEK_END);
                     lseek(file,0,SEEK_SET);
 
+                    string orgfilename = filename + "\n";
+                    res = filename.rfind(".");
+                    filename = filename.substr(res);
                     package pkg;
                     time(&pkg.Time);
-                    filename = to_string(pkg.Time) + filename;
+                    filename = orgfilename + to_string(pkg.Time) + filename;
                     pkg = package(FILES, filename, username, target);
                     pkg.buf_size=file_size;
                     if(write_package(pkg)<0) return -1;
@@ -344,40 +392,14 @@ int main(int argc, char* argv[]){
                         memset(pkg.buf, 0, sizeof(pkg.buf));
                         while((res = read(file, &pkg.buf, min(2048, file_size)))<=0){
                             if(errno==EAGAIN) continue;
-                            perror("reading file error: ");
+                            ERR("reading file error: ")
                         }
                         pkg.buf_size = res;
-                        if(write_package(pkg)<0) perror("writing file error: ");
+                        if(write_package(pkg)<0) ERR("writing file error: ")
                         file_size -= res;
                     }
                     pkg = package(FILES, (string)"Succeeed", username, target);
-                    if(write_package(pkg)<0) perror("writing file error: ");
-                    //read buf and then send 2 server
-                }
-                else if(act==6){
-                    string path=commend.substr(2);
-                    package pkg(GET, path);
-                    int res;
-                    
-                    strncpy(pkg.sender, username.c_str(), username.length());
-                    strncpy(pkg.recver, target.c_str(), target.length());
-
-                    if(write_package(pkg)<0) perror("download wr error: ");
-                    if(read_package(pkg)<0) perror("download rd error: ");
-
-                    if((string)pkg.buf=="-1"){
-                        cout<<"error occur when taking file\n";
-                    }
-
-                    filesize = atoi(pkg.buf);
-                    int fd=open(path.c_str(),O_CREAT|O_WRONLY);
-                    
-                    while(filesize>0){
-                        memset(pkg.buf, 0, sizeof(pkg.buf));
-                        if(read_package(pkg)<0) perror("Getting package error: ");
-                        write(fd,pkg.buf,pkg.buf_size);
-                        filesize -= pkg.buf_size;
-                    }
+                    if(write_package(pkg)<0) ERR("writing file error: ")
                 }
                 else{
                     bad_commend();

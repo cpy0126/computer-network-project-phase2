@@ -61,9 +61,7 @@ struct package{
     int type, buf_size;
     char buf[2048], sender[64], recver[64];
     time_t Time;
-    package(){
-        Time = time(NULL);    
-    }
+    package(){}
     package(int _type, string buffer){
         memset(buf, 0, sizeof(buf));
         memset(sender, 0, sizeof(sender));
