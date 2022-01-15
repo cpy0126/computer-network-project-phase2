@@ -1,17 +1,26 @@
 # Computer-Network-Project-Phase2
 
-- [ ] Check input size in html (mes, img, file)
+### Server
 
-- [x] Check friend relationship when del
+```bash
+make
+./server [port1]
+```
 
-- [x] send img
+### Client(console mode)
 
-- [x] send file
+```bash
+make
+./console_client [server ip]:[port1] [port2]
+```
 
-- [ ] check error (replace write to send, return when read()==0, ...)
+### Client(web mode)
 
-- [ ] not return -1 every situation (etc. write header404 to browser when upload failed)
-
-- [x] favicon.ico
-
-- [ ] send 404 correctly
+```bash
+make
+./client [server ip]:[port1] [port3]
+#macOS
+open http://[client ip]:[port3]/
+#linux
+xdg-open http://[client ip]:[port3]/
+```
