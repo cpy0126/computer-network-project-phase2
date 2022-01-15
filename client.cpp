@@ -95,21 +95,22 @@ int get(string path, int extra);
 int post(string event, int body_size);
 
 int read_package(package &pkg){
-    int tmp = 0, res;
-    memset(pkg.buf, 0, sizeof(pkg.buf));
-    while(tmp!=sizeof(package)){
-        while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<0){
+    int res = 1, tmp = 0;
+    memset(buf, 0, sizeof(package));
+    while(tmp<sizeof(package)){
+        while((res = read(sock_fd, buf+tmp, sizeof(package)-tmp))<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
+        if(res==0) return -1;
         tmp += res;
     }
+    memcpy(&pkg, buf, sizeof(package));
     return 0;
 }
 
 int write_package(package &pkg){
-    int res;
-    while((res = send(sock_fd, &pkg, sizeof(package), MSG_NOSIGNAL))<0){
+    while(send(sock_fd, &pkg, sizeof(package), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
@@ -154,7 +155,7 @@ int handle_http(){
     if(method=="GET"){
         if(reqpath=="/"){
             if(logflag==1) return get("/homepage.html", 0);
-            return (login());
+            return login();
         }
         else
             return get(reqpath, 0);
@@ -175,15 +176,13 @@ int handle_http(){
         }
         return post(reqpath, body_size);
     }
-    while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+    while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0)
         if(errno==EAGAIN) continue;
-        return -1;
-    }
+        else return -1;
     return 0;
 }
 
 int main(int argc, char* argv[]){
-    
     if(argc!=3){
         cout<<"usage: [server] ip:port [browser] port (default=80)"<<endl;
         return 1;
@@ -260,24 +259,27 @@ int login(){
     
     if(write_package(pkg)<0) return -1;
     if(read_package(pkg)<0) return -1;
-
-    if((string)pkg.buf=="Failed")
-        return send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0? -1 : 0;
+    if((string)pkg.buf=="Failed"){
+        while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0)
+            if(errno==EAGAIN) continue;
+            else return -1;
+        return -1;
+    }
     
     int filesize = atoi(pkg.buf);
     string header = "text/html";
 
     if(logflag==-1) header = set_header(filesize+used.length(), header, "");
     else header = set_header(filesize, header, "");
-    while((res=send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL))<0){
+
+    while(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
     
     while(filesize>0){
-        memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        while((res=send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL))<0){
+        while(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
@@ -285,7 +287,7 @@ int login(){
     }
     
     if(logflag==-1){
-        while((res=send(cli_fd, used.c_str(), used.length(), MSG_NOSIGNAL))<0){
+        while(send(cli_fd, used.c_str(), used.length(), MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
@@ -299,7 +301,6 @@ int get(string path, int extra){
     if(logflag!=1 && path!="/favicon.ico") return login();
     package pkg(GET, path);
     int res;
-    cerr << path << endl;
     
     if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html" || path=="/favicon.ico" || user=="" || target==""){
         strncpy(pkg.sender, ((string)"..").c_str(), 2);
@@ -309,17 +310,17 @@ int get(string path, int extra){
         strncpy(pkg.sender, user.c_str(), user.length());
         strncpy(pkg.recver, target.c_str(), target.length());
     }
-    cerr << (string)pkg.sender << " " << (string)pkg.recver << endl;
+    cerr << (string)pkg.sender << "/" << (string)pkg.recver << path << endl;
 
     if(write_package(pkg)<0) return -1;
     if(read_package(pkg)<0) return -1;
 
     if((string)pkg.buf=="-1"){
-        while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+        while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
-        return 0;
+        return -1;
     }
 
     filesize = atoi(pkg.buf);
@@ -333,7 +334,7 @@ int get(string path, int extra){
         }
 
     header = set_header(filesize + extra, header, extra_header);
-    while((res=send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL))<0){
+    while(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
@@ -341,7 +342,7 @@ int get(string path, int extra){
     while(filesize>0){
         memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        while((res=send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL))<0){
+        while(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
@@ -554,7 +555,6 @@ int post(string event, int body_size){
         event = "/update";
     }
     if(event=="/view_history" || event=="/update"){
-        cerr << "HIS with LOGFLAG: " << logflag << " HIS length: ";
         string tmp = "30";
         if(event=="/view_history"){
             tmp = (string) buf;
@@ -562,7 +562,6 @@ int post(string event, int body_size){
             tmp = tmp.substr(res+1);
         }
         
-        int latest = stoi(tmp);
         package pkg(HIS, tmp, user, target);
         if(write_package(pkg)<0) return -1;
         int extra = 0;
@@ -584,7 +583,6 @@ int post(string event, int body_size){
         extra += 54;
         
         if(get("/chatroom.html",extra)<0) return -1;
-        cerr << (int)space.size() << endl;
         string nname, oname;
         tmp = "<html><body><div class=\"dialogue\">";
         while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
@@ -613,7 +611,6 @@ int post(string event, int body_size){
                 if(errno==EAGAIN) continue;
                 return -1;
             }
-            cerr << tmp << endl;
         }
         tmp = "</div></body></html>";
         while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
@@ -622,9 +619,9 @@ int post(string event, int body_size){
         }
         return 0;
     }
-    while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+    while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
-    return 0;
+    return -1;
 }
