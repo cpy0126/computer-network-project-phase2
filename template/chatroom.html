@@ -76,12 +76,15 @@
 </head>
 <body>
     <h1> Chatroom</h1>
+    <form action="/logout" method="post" style="float:left;">
+        <input type="submit" value="LOGOUT">
+    </form>
     <form action="/homepage" method="post" style="float:left;">
         <input type="submit" value="Back to homepage">
     </form>
     <form action="/update" method="post">
         <input type="submit" value="Update chat history">
-    </form>
+    </form><br>
     <form action="/view_history" method="post">
         <label >View chat history, up to latest 999 messege</label>
         <input type="text" id="view_history" name="view_history" maxlength="3">
@@ -103,6 +106,6 @@
         <input type="text" id="message" name="message" maxlength="256">
         <input type="submit" value="Enter">
     </form>
-    <br></br>
+    <br>
 </body>
 </html>

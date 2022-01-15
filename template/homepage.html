@@ -5,22 +5,25 @@
 </head>
 <body>
     <h1> Home Page</h1>
+    <form action="/logout" method="post">
+        <input type="submit" value="LOGOUT">
+    </form><br>
     <form action="/list_friend" method="post">
-        <label >List all of my friend: </label>
+        <label>List all of my friend: </label>
         <input type="submit" value="Choose">
     </form><br>
     <form action="/add_friend" method="post">
-        <label >Add a friend: </label>
+        <label>Add a friend: </label>
         <input type="text" id="friend_name" name="add_friend" maxlength="64">
         <input type="submit" value="Choose">
     </form><br>
     <form action="/del_friend" method="post">
-        <label >Delete one of my friend: </label>
+        <label>Delete one of my friend: </label>
         <input type="text" id="friend_name" name="del_friend" maxlength="64">
         <input type="submit" value="Choose">
     </form><br>
     <form action="/chat_with" method="post">
-        <label >Chat with one of my friend: </label>
+        <label>Chat with one of my friend: </label>
         <input type="text" id="friend_name" name="friend_name" maxlength="64">
         <input type="submit" value="Choose">
     </form>

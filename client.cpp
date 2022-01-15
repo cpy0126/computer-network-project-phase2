@@ -20,6 +20,7 @@ using namespace std;
 #define FILES 200
 #define MSS 300
 #define LOGIN 400
+#define LOGOUT -400
 #define ADD 500
 #define DEL 600
 #define LIST 700
@@ -240,6 +241,10 @@ int main(int argc, char* argv[]){
             if(FD_ISSET(cli_fd, &read_OK)){
                 if(handle_http()==-1){
                     perror("handle_http");
+                    package pkg(LOGOUT, user);
+                    write_package(pkg);
+                    user = "";
+                    target = "";
                     logflag = 0;
                 }
                 close(cli_fd);
@@ -451,6 +456,14 @@ int post(string event, int body_size){
     if(event=="/homepage"){
         target = "";
         return get("/homepage.html", 0);
+    }
+    if(event=="/logout"){
+        package pkg(LOGOUT, user);
+        user = "";
+        target = "";
+        logflag = 0;
+        if(write_package(pkg)) return -1;
+        return login();
     }
     if(event=="/send_message"){
         get_boundary();
