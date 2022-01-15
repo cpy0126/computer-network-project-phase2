@@ -445,11 +445,11 @@ int post(string event, int body_size){
         if(write_package(pkg)<0) return -1;
         if(read_package(pkg)<0) return -1;
         
-        if(((string)pkg.buf)=="Succeeed"){
-            target = name;
-            return get("/chatroom.html", 0);
-        }
-        return get("/homepage.html", 0);
+        if(((string)pkg.buf)!="Succeeed")
+            return get("/homepage.html", 0);
+        
+        target = name;
+        event = "/update";
     }
     if(event=="/homepage"){
         target = "";
