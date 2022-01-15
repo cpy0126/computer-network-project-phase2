@@ -297,6 +297,7 @@ int main(int argc, char* argv[]){
                         target = name;
                         status=2;
                         show_chat(name);
+                        show_his("30");
                     }
                     else{
                         show_home();
