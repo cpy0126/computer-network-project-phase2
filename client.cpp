@@ -98,7 +98,7 @@ int read_package(package &pkg){
     int tmp = 0, res;
     memset(pkg.buf, 0, sizeof(pkg.buf));
     while(tmp!=sizeof(package)){
-        while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
+        while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
@@ -299,6 +299,7 @@ int get(string path, int extra){
     if(logflag!=1 && path!="/favicon.ico") return login();
     package pkg(GET, path);
     int res;
+    cerr << path << endl;
     
     if(path=="/homepage.html" || path=="/chatroom.html" || path=="/index.html" || path=="/favicon.ico" || user=="" || target==""){
         strncpy(pkg.sender, ((string)"..").c_str(), 2);
@@ -308,6 +309,7 @@ int get(string path, int extra){
         strncpy(pkg.sender, user.c_str(), user.length());
         strncpy(pkg.recver, target.c_str(), target.length());
     }
+    cerr << (string)pkg.sender << " " << (string)pkg.recver << endl;
 
     if(write_package(pkg)<0) return -1;
     if(read_package(pkg)<0) return -1;
@@ -345,6 +347,7 @@ int get(string path, int extra){
         }
         filesize -= pkg.buf_size;
     }
+    cerr << "finished" << endl;
 
     return 0;
 }
@@ -570,36 +573,52 @@ int post(string event, int body_size){
             if(read_package(pkg)<0) return -1;
             if(pkg.type==HIS) break;
             space.push_back(pkg);
+            extra += 80 + ((string)pkg.sender).length();
             if(pkg.type==MSS)
-                extra += pkg.buf_size + 10;
+                extra += pkg.buf_size + 24;
             if(pkg.type==IMG)
-                extra += ((string)pkg.buf).length() + 57; 
+                extra += ((string)pkg.buf).length() + 83; 
             if(pkg.type==FILES)
-                extra += ((string)pkg.buf).length() + 33;
+                extra += ((string)pkg.buf).length() - 1 + 26;
         }
+        extra += 54;
         
-        extra += ((string)pkg.sender).length() * (int)space.size();
         if(get("/chatroom.html",extra)<0) return -1;
         cerr << (int)space.size() << endl;
         string nname, oname;
+        tmp = "<html><body><div class=\"dialogue\">";
+        while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
+            if(errno==EAGAIN) continue;
+            return -1;
+        }
         
         for(int i=0;i<((int)space.size());++i){
-            tmp = "<p>" + (string)space[i].sender + " : \0";
+            if(space[i].sender==user){
+                tmp = "<div class=\"user local\"><div class=\"avatar\"><div class=\"name\">\0" + (string)space[i].sender + "</div></div>\0";
+            }
+            else{
+                tmp = "<div class=\"user other\"><div class=\"avatar\"><div class=\"name\">\0" + (string)space[i].sender + "</div></div>\0";
+            }
             if(space[i].type==MSS)
-                tmp = tmp + (string)space[i].buf + "</p>\0";
+                tmp = tmp + "<div class=\"text\">" + (string)space[i].buf + "</div></div>\0";
             if(space[i].type==IMG)
-                tmp = tmp + "</p><img src=\"\0" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">\0";
+                tmp = tmp + "<div class=\"text\"><img src=\"\0" + (string)space[i].buf + "\" width=\"200\" height=\"100\"></div></div>\0";
             if(space[i].type==FILES){
                 nname = oname = ((string)space[i].buf);
                 res = nname.find("\n");
                 nname = nname.substr(res+1), oname = oname.substr(0,res);
-                tmp = tmp + "</p><a href=\"\0" + nname + "\" download>" + oname + "</a>\0";
+                tmp = tmp + "<div class=\"text\"><a href=\"\0" + nname + "\" download>\0" + oname + "</a></div></div>\0";
             }
             while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
                 if(errno==EAGAIN) continue;
                 return -1;
             }
             cerr << tmp << endl;
+        }
+        tmp = "</div></body></html>";
+        while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
+            if(errno==EAGAIN) continue;
+            return -1;
         }
         return 0;
     }
