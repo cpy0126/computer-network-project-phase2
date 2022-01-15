@@ -1,33 +1,26 @@
 # Computer-Network-Project-Phase2
 
-```cpp
-#define SEND 10
-#define RECV 20
-#define CMD 30
-#define IMG 100
-#define FILES 200
-#define MSS 300
+### Server
 
-struct package{
-    int type: SEND, RECV, LOGIN, ADD, DEL
-    time_t Time
-    char buf[2048]
-    std::string sender
-    std::string recver
-    int buf_size
-}
+```bash
+make
+./server [port1]
 ```
 
-```cpp
-#include<time.h>
-time_t time; //seconds from 1970/1/1 00:00
-struct tm date //yyyy-mm-dd ...
-time(NULL) //get cur time_t
-local_time(*time_t) //change time_t to struct tm
-ctime(*time_t) //change time_t to char*
-asctime(struct *tm) //change struct tm to char*
+### Client(console mode)
+
+```bash
+make
+./console_client [server ip]:[port1] [port2]
 ```
 
-- [ ] Check html input size
+### Client(web mode)
 
-- [ ] Connect Client and Server (detect connection status)
+```bash
+make
+./client [server ip]:[port1] [port3]
+#macOS
+open http://[client ip]:[port3]/
+#linux
+xdg-open http://[client ip]:[port3]/
+```
