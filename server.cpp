@@ -120,7 +120,7 @@ int check_person(string name){
         free(user_file[i]);
     }
     free(user_file);
-    return (good)?1:0;
+    return good;
 }
 
 int send_response(request* reqP,package pkg){
@@ -130,6 +130,18 @@ int send_response(request* reqP,package pkg){
         return 0;
     }
     return 1;
+}
+
+void del_dir(string dir){
+    struct dirent **user_file;
+    int n=scandir(dir.c_str(), &user_file, file_select, alphasort);
+    for(int i=0;i<n;i++){
+        string now=dir+"/"+(string)user_file[i]->d_name;
+        remove(now.c_str());
+        free(user_file[i]);
+    }
+    rmdir(dir.c_str());
+    free(user_file);
 }
 
 int main(int argc, char* argv[]){
@@ -237,14 +249,16 @@ int main(int argc, char* argv[]){
                 }
                 string friend_name="./"+requestP[conn_fd].user_name+"/"+new_friend;
                 string tmp=friend_name+"/chat";
-                remove(tmp.c_str());
-                rmdir(friend_name.c_str());
+                // remove(tmp.c_str());
+                // rmdir(friend_name.c_str());
+                del_dir(friend_name);
 
-                string friend_name2="./"+new_friend+"/"+requestP[conn_fd].user_name;
-                string tmp2=friend_name2+"/chat";
-                remove(tmp2.c_str());
-                rmdir(friend_name2.c_str());
-
+                if(requestP[conn_fd].user_name!=new_friend){
+                    string friend_name2="./"+new_friend+"/"+requestP[conn_fd].user_name;
+                    string tmp2=friend_name2+"/chat";
+                    del_dir(friend_name2);
+                }
+                
                 set_response(&response,DEL,strlen(succeed),succeed,NULL,NULL);
                 send_response(&requestP[conn_fd],response);
             }
@@ -253,7 +267,6 @@ int main(int argc, char* argv[]){
                 string new_friend = string(requestP[conn_fd].now.recver);
                 if(!check_person(new_friend)){
                     set_response(&response,MSS,strlen(failed),failed,NULL,NULL);
-                    // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     send_response(&requestP[conn_fd],response);
                     continue;
                 }
