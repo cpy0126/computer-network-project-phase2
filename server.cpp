@@ -14,8 +14,9 @@
 #include<string.h>
 #include<map>
 using namespace std;
-
+ 
 #define ERR(a) {perror(a): return EXIT_FAILURE;}
+#define NONE 0
 #define IMG 100
 #define FILES 200
 #define MSS 300
@@ -72,9 +73,18 @@ void init_request(request* reqP);
 void free_request(request* reqP);
 
 int handle_read(request* reqP){
-    if(recv(reqP->conn_fd, &(reqP->now), sizeof(package), 0)<=0){        
-        return 0;
+    char buf[3000];
+    memset(buf, 0, sizeof(buf));
+    int res = 1, tmp = 0;
+    while(tmp < sizeof(package)){
+        while((res = recv(reqP->conn_fd, buf+tmp, sizeof(package)-tmp, 0))<0){
+            if(errno==EAGAIN) continue;
+            return 0;
+        }
+        if(res==0) return 0;
+        tmp += res;
     }
+    memcpy(&(reqP->now), buf, sizeof(package));
     return 1;
 }
 
@@ -95,6 +105,19 @@ void set_response(package *now,int type,int bufferSize,char *buffer,char *sender
 
 int file_select(const struct dirent *entry){
    return strcmp(entry->d_name, ".")&&strcmp(entry->d_name, "..");
+}
+
+int check_person(string name){
+    struct dirent **user_file;
+    int n=scandir(".", &user_file, file_select, alphasort);
+    int good=0;  
+    for(int i=0;i<n;i++){
+        string f_name=(string)(user_file[i]->d_name);
+        if(f_name==name)    good=1;
+        free(user_file[i]);
+    }
+    free(user_file);
+    return (good)?1:0;
 }
 
 int main(int argc, char* argv[]){
@@ -127,7 +150,7 @@ int main(int argc, char* argv[]){
             if(writeFD[a])
                 FD_SET(a, &write_OK);
             if(readFD[a])
-                FD_SET(a, &read_OK);   
+                FD_SET(a, &read_OK);
         }
         int co = select(maxfd+1, &read_OK, &write_OK, NULL, NULL);  //doing IO mutiplexing
         if(FD_ISSET(svr.listen_fd, &read_OK)){  // accept new connect client
@@ -146,7 +169,6 @@ int main(int argc, char* argv[]){
             requestP[conn_fd].myfile_fd=-1;
             requestP[conn_fd].friend_fd=-1;
             fprintf(stderr, "getting a new request... fd %d from %s\n", conn_fd, inet_ntoa(cliaddr.sin_addr));
-            
             continue;
         }
 
@@ -154,7 +176,6 @@ int main(int argc, char* argv[]){
             if(!FD_ISSET(conn_fd, &read_OK))
                 continue;
             handle_read(&requestP[conn_fd]);
-            
             if(requestP[conn_fd].now.type==LOGIN){    // inputing username
                 package response;
                 string new_user=string(requestP[conn_fd].now.buf);
@@ -173,12 +194,11 @@ int main(int argc, char* argv[]){
             else if(requestP[conn_fd].now.type==ADD){    // Adding friend
                 package response;
                 string new_friend = string(requestP[conn_fd].now.buf);
-                if(user_names.find(new_friend)==user_names.end()){
+                if(!check_person(new_friend)){
                     set_response(&response,ADD,strlen(failed),failed,NULL,NULL);
                     send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     continue;
                 }
-                
                 string friend_name="./"+requestP[conn_fd].user_name+"/"+new_friend;
                 mkdir(friend_name.c_str(),0777);
                 friend_name=friend_name+"/chat";
@@ -195,12 +215,11 @@ int main(int argc, char* argv[]){
             else if(requestP[conn_fd].now.type==DEL){    // Deleteing friend
                 package response;
                 string new_friend = string(requestP[conn_fd].now.buf);
-                if(user_names.find(new_friend)==user_names.end()){
+                if(!check_person(new_friend)){
                     set_response(&response,DEL,strlen(failed),failed,NULL,NULL);
                     send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     continue;
                 }
-                
                 string friend_name="./"+requestP[conn_fd].user_name+"/"+new_friend;
                 string tmp=friend_name+"/chat";
                 remove(tmp.c_str());
@@ -217,7 +236,7 @@ int main(int argc, char* argv[]){
             else if(requestP[conn_fd].now.type==MSS){    // receve message
                 package response;
                 string new_friend = string(requestP[conn_fd].now.recver);
-                if(user_names.find(new_friend)==user_names.end()){
+                if(!check_person(new_friend)){
                     set_response(&response,MSS,strlen(failed),failed,NULL,NULL);
                     send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     continue;
@@ -251,7 +270,6 @@ int main(int argc, char* argv[]){
                     string my_chat="./"+friend_name+"/"+requestP[conn_fd].user_name+"/chat";
                     string friend_file="./"+requestP[conn_fd].user_name+"/"+friend_name+"/"+file_name;
                     string my_file="./"+friend_name+"/"+requestP[conn_fd].user_name+"/"+file_name;
-                    
                     requestP[conn_fd].filesize=requestP[conn_fd].now.buf_size;
                     int me=open(friend_chat.c_str(),O_WRONLY|O_APPEND);
                     write(me,&(requestP[conn_fd].now),sizeof(package));
@@ -268,7 +286,6 @@ int main(int argc, char* argv[]){
                         perror("open file error: ");
                     continue;
                 }
-                
                 if(!strcmp(requestP[conn_fd].now.buf,succeed)){
                     if(requestP[conn_fd].friend_fd!=-1)
                         close(requestP[conn_fd].friend_fd);
@@ -368,36 +385,41 @@ int main(int argc, char* argv[]){
                 }
                 close(file_fd);
             }
+            else if(requestP[conn_fd].now.type==-LOGIN){
+                user_names.erase(requestP[conn_fd].user_name);
+                init_request(&requestP[conn_fd]);
+            }
+            requestP[conn_fd].now.type=NONE;
         }
-
+ 
     }
-
+ 
 }
-
-
+ 
+ 
 void init_request(request *reqP){
-    reqP->conn_fd=-1;
     reqP->filesize=0;
     reqP->myfile_fd=-1;
     reqP->friend_fd=-1;
 }
-
+ 
 void free_request(request *reqP){
     close(reqP->conn_fd);
+    reqP->conn_fd=-1;
     init_request(reqP);
 }
-
+ 
 void init_server(unsigned short port){
     struct sockaddr_in servaddr;
     int tmp;
-
+ 
     gethostname(svr.hostname, sizeof(svr.hostname));
     svr.port = port;
-
+ 
     svr.listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (svr.listen_fd < 0)
         ERR_EXIT("socket");
-
+ 
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -408,7 +430,7 @@ void init_server(unsigned short port){
     if (listen(svr.listen_fd, 1024) < 0){
         ERR_EXIT("listen");
     }
-
+ 
     // Get file descripter table size and initialize request table
     maxfd = getdtablesize();
     requestP = (request *)malloc(sizeof(request) * maxfd);
@@ -419,7 +441,6 @@ void init_server(unsigned short port){
         init_request(&requestP[i]);
     }
     requestP[svr.listen_fd].conn_fd = svr.listen_fd;
-
+ 
     return;
 }
-
