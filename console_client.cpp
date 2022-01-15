@@ -293,13 +293,13 @@ int main(int argc, char* argv[]){
                     package pkg(MSS, content, username, target);
                     if(write_package(pkg)<0) perror("send mss wr error: ");
                     if(read_package(pkg)<0) perror("send mss rd error: ");
-                    show_his("30");
                 }
                 else if(act==2){
                     string filename = commend.substr(2);
                     int file=open(filename.c_str(),O_RDONLY);
                     if(file<0){
                         cout<<"No such image "<<endl;
+                        continue;
                     }
                     int file_size=lseek(file,0,SEEK_END);
                     lseek(file,0,SEEK_SET);
@@ -323,14 +323,13 @@ int main(int argc, char* argv[]){
                     pkg = package(IMG, (string)"Succeeed", username, target);
                     if(write_package(pkg)<0) perror("writing file error: ");
                     //read buf and then send 2 server
-                    show_chat(target);
-                    show_his("30");
                 }
                 else if(act==3){
                     string filename = commend.substr(2);
                     int file=open(filename.c_str(),O_RDONLY);
                     if(file<0){
                         cout<<"No such image "<<endl;
+                        continue;
                     }
                     int file_size=lseek(file,0,SEEK_END);
                     lseek(file,0,SEEK_SET);
@@ -354,16 +353,38 @@ int main(int argc, char* argv[]){
                     pkg = package(FILES, (string)"Succeeed", username, target);
                     if(write_package(pkg)<0) perror("writing file error: ");
                     //read buf and then send 2 server
-                    show_chat(target);
-                    show_his("30");
                 }
                 else if(act==6){
+                    string path=commend.substr(2);
+                    package pkg(GET, path);
+                    int res;
+                    
+                    strncpy(pkg.sender, username.c_str(), username.length());
+                    strncpy(pkg.recver, target.c_str(), target.length());
 
+                    if(write_package(pkg)<0) perror("download wr error: ");
+                    if(read_package(pkg)<0) perror("download rd error: ");
+
+                    if((string)pkg.buf=="-1"){
+                        cout<<"error occur when taking file\n";
+                    }
+
+                    filesize = atoi(pkg.buf);
+                    int fd=open(path.c_str(),O_CREAT|O_WRONLY);
+                    
+                    while(filesize>0){
+                        memset(pkg.buf, 0, sizeof(pkg.buf));
+                        if(read_package(pkg)<0) perror("Getting package error: ");
+                        write(fd,pkg.buf,pkg.buf_size);
+                        filesize -= pkg.buf_size;
+                    }
                 }
                 else{
                     bad_commend();
                     continue;
                 }
+                show_chat(target);
+                show_his("30");
             }
 
         }
