@@ -1,16 +1,86 @@
 <!DOCTYPE HTML>
 <html>
 <head>
-   <title>Welcome to Chatroom</title>
+    <title>Welcome to Chatroom</title>
+    <style>
+    .dialogue{
+        width: 800px;
+    }
+    .user{
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 20px;
+    }
+    .user .avatar{
+        width: 60px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+    .user .name{
+        color: #333;
+        word-break: break-all;
+    }
+    .user .text{
+        background-color: #aaa;
+        padding: 16px;
+        border-radius: 10px;
+        position: relative;
+    }
+    .other{
+        justify-content: flex;
+    }
+    .other .text{
+        margin-left: 20px;
+        margin-right: 80px;
+        color: #000;
+        background-color: #e3e3e3;
+        word-break: break-all;
+    }
+    .other .text::before{
+        border-right: 10px solid #e3e3e3;
+        left: -10px;
+    }
+    .local{
+        justify-content: flex-end;
+    }
+    .local .text{
+        margin-right: 20px;
+        margin-left: 80px;
+        order: -1;
+        background-color: #4179f1;
+        color: #eee;
+        word-break: break-all;
+    }
+    .local .text::before{
+        border-left: 10px solid #4179f1;
+        right: -10px;
+    }
+    .other .text::before,
+    .local .text::before{
+            content: "";
+            position: absolute;
+            top: 20px;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+    }
+    .other .text,
+    .local .text{
+        font-weight: 300;
+        box-shadow: 0 0 10px #888;
+    }
+    </style>
 </head>
 <body>
     <h1> Chatroom</h1>
+    <form action="/logout" method="post" style="float:left;">
+        <input type="submit" value="LOGOUT">
+    </form>
     <form action="/homepage" method="post" style="float:left;">
         <input type="submit" value="Back to homepage">
     </form>
     <form action="/update" method="post">
         <input type="submit" value="Update chat history">
-    </form>
+    </form><br>
     <form action="/view_history" method="post">
         <label >View chat history, up to latest 999 messege</label>
         <input type="text" id="view_history" name="view_history" maxlength="3">
@@ -27,12 +97,11 @@
         <input type="file" name="file" value="send_file" id="send_file">
         <input type="submit" value="Upload">
     </form>
-    <!------------------------------------------------------->
     <form action="/send_message" method="post" enctype="multipart/form-data">
         <label >Enter your message</label>
         <input type="text" id="message" name="message" maxlength="256">
         <input type="submit" value="Enter">
     </form>
-    
+    <br>
 </body>
 </html>

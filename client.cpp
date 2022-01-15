@@ -20,6 +20,7 @@ using namespace std;
 #define FILES 200
 #define MSS 300
 #define LOGIN 400
+#define LOGOUT -400
 #define ADD 500
 #define DEL 600
 #define LIST 700
@@ -95,21 +96,22 @@ int get(string path, int extra);
 int post(string event, int body_size);
 
 int read_package(package &pkg){
-    int tmp = 0, res;
-    memset(pkg.buf, 0, sizeof(pkg.buf));
-    while(tmp!=sizeof(package)){
-        while((res = read(sock_fd, &pkg+tmp, sizeof(package)-tmp))<=0){
+    int res = 1, tmp = 0;
+    memset(buf, 0, sizeof(package));
+    while(tmp<sizeof(package)){
+        while((res = read(sock_fd, buf+tmp, sizeof(package)-tmp))<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
+        if(res==0) return -1;
         tmp += res;
     }
+    memcpy(&pkg, buf, sizeof(package));
     return 0;
 }
 
 int write_package(package &pkg){
-    int res;
-    while((res = send(sock_fd, &pkg, sizeof(package), MSG_NOSIGNAL))<0){
+    while(send(sock_fd, &pkg, sizeof(package), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
@@ -136,7 +138,7 @@ int handle_http(){
     shead = "";
     while(1){
         if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
-        if(res<=0) return -1;
+        if(res<=0) return res;
         cur = head_buf[headsize];
         ++headsize;
         if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -154,7 +156,7 @@ int handle_http(){
     if(method=="GET"){
         if(reqpath=="/"){
             if(logflag==1) return get("/homepage.html", 0);
-            return (login());
+            return login();
         }
         else
             return get(reqpath, 0);
@@ -168,22 +170,20 @@ int handle_http(){
             return post(reqpath, body_size);
         memset(buf, 0, sizeof(char)*(body_size+10));
         while(body_size>0){
-            //need to check connection with server
-            if((res = read(cli_fd, buf+bufsize, body_size))<0) continue;
+            if((res = read(cli_fd, buf+bufsize, body_size))<0 && errno==EAGAIN) continue;
+            if(res<=0) return res;
             bufsize += res;
             body_size -= res;
         }
         return post(reqpath, body_size);
     }
-    while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+    while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0)
         if(errno==EAGAIN) continue;
-        return -1;
-    }
+        else return -1;
     return 0;
 }
 
 int main(int argc, char* argv[]){
-    
     if(argc!=3){
         cout<<"usage: [server] ip:port [browser] port (default=80)"<<endl;
         return 1;
@@ -233,24 +233,22 @@ int main(int argc, char* argv[]){
         cli_fd = -1;
         int clilen = sizeof(cliaddr);
         if((cli_fd = accept(http_fd, (struct sockaddr*) &cliaddr, (socklen_t*) &clilen)) < 0) continue;
-        if(logflag==-1)
-            if(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0){
-                close(cli_fd);
-                logflag = -1;
-                continue;
-            }
         
         while(1){
             FD_ZERO(&read_OK);
             FD_SET(cli_fd, &read_OK);
             select(cli_fd+1, &read_OK, NULL, NULL, NULL);
             if(FD_ISSET(cli_fd, &read_OK)){
-                if(handle_http()<0){
+                if(handle_http()==-1){
                     perror("handle_http");
-                    close(cli_fd);
-                    logflag = -1;
-                    break;
+                    package pkg(LOGOUT, user);
+                    write_package(pkg);
+                    user = "";
+                    target = "";
+                    logflag = 0;
                 }
+                close(cli_fd);
+                break;
             }
         }
     }
@@ -266,24 +264,27 @@ int login(){
     
     if(write_package(pkg)<0) return -1;
     if(read_package(pkg)<0) return -1;
-
-    if((string)pkg.buf=="Failed")
-        return send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0? -1 : 0;
+    if((string)pkg.buf=="Failed"){
+        while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0)
+            if(errno==EAGAIN) continue;
+            else return -1;
+        return -1;
+    }
     
     int filesize = atoi(pkg.buf);
     string header = "text/html";
 
     if(logflag==-1) header = set_header(filesize+used.length(), header, "");
     else header = set_header(filesize, header, "");
-    while((res=send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL))<0){
+
+    while(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
     
     while(filesize>0){
-        memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        while((res=send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL))<0){
+        while(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
@@ -291,7 +292,7 @@ int login(){
     }
     
     if(logflag==-1){
-        while((res=send(cli_fd, used.c_str(), used.length(), MSG_NOSIGNAL))<0){
+        while(send(cli_fd, used.c_str(), used.length(), MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
@@ -314,16 +315,17 @@ int get(string path, int extra){
         strncpy(pkg.sender, user.c_str(), user.length());
         strncpy(pkg.recver, target.c_str(), target.length());
     }
+    cerr << (string)pkg.sender << "/" << (string)pkg.recver << path << endl;
 
     if(write_package(pkg)<0) return -1;
     if(read_package(pkg)<0) return -1;
 
     if((string)pkg.buf=="-1"){
-        while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+        while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
-        return 0;
+        return -1;
     }
 
     filesize = atoi(pkg.buf);
@@ -337,7 +339,7 @@ int get(string path, int extra){
         }
 
     header = set_header(filesize + extra, header, extra_header);
-    while((res=send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL))<0){
+    while(send(cli_fd, header.c_str(), header.length(), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
@@ -345,12 +347,13 @@ int get(string path, int extra){
     while(filesize>0){
         memset(pkg.buf, 0, sizeof(pkg.buf));
         if(read_package(pkg)<0) return -1;
-        while((res=send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL))<0){
+        while(send(cli_fd, pkg.buf, pkg.buf_size, MSG_NOSIGNAL)<0){
             if(errno==EAGAIN) continue;
             return -1;
         }
         filesize -= pkg.buf_size;
     }
+    cerr << "finished" << endl;
 
     return 0;
 }
@@ -454,6 +457,14 @@ int post(string event, int body_size){
         target = "";
         return get("/homepage.html", 0);
     }
+    if(event=="/logout"){
+        package pkg(LOGOUT, user);
+        user = "";
+        target = "";
+        logflag = 0;
+        if(write_package(pkg)) return -1;
+        return login();
+    }
     if(event=="/send_message"){
         get_boundary();
         string content = (string) buf;
@@ -476,7 +487,7 @@ int post(string event, int body_size){
         memset(head_buf, 0, sizeof(head_buf));
         while(1){
             if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
-            if(res<=0) return -1;
+            if(res<=0) return res;
             cur = head_buf[headsize];
             ++headsize;
             if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -521,7 +532,7 @@ int post(string event, int body_size){
         memset(head_buf, 0, sizeof(head_buf));
         while(1){
             if((res = read(cli_fd, head_buf+headsize, 1))<0 && errno==EAGAIN) continue;
-            if(res<=0) return -1;
+            if(res<=0) return res;
             cur = head_buf[headsize];
             ++headsize;
             if(prev=='\r' && cur=='\n' && headsize==2) break;
@@ -532,12 +543,12 @@ int post(string event, int body_size){
         filename = tmp.substr(res+10);
         res = filename.find("\r\n");
         filename = filename.substr(0, res-1);
+        string orgfilename = filename + "\n";
         res = filename.rfind(".");
         filename = filename.substr(res);
         package pkg;
         time(&pkg.Time);
-        filename = to_string(pkg.Time) + filename;
-        cerr << "filename: " << filename << endl;
+        filename = orgfilename + to_string(pkg.Time) + filename;
         pkg = package(FILES, filename, user, target);
 
         body_size -= headsize;
@@ -557,7 +568,6 @@ int post(string event, int body_size){
         event = "/update";
     }
     if(event=="/view_history" || event=="/update"){
-        cerr << "HIS with LOGFLAG: " << logflag << " HIS length: ";
         string tmp = "30";
         if(event=="/view_history"){
             tmp = (string) buf;
@@ -565,7 +575,6 @@ int post(string event, int body_size){
             tmp = tmp.substr(res+1);
         }
         
-        int latest = stoi(tmp);
         package pkg(HIS, tmp, user, target);
         if(write_package(pkg)<0) return -1;
         int extra = 0;
@@ -576,37 +585,56 @@ int post(string event, int body_size){
             if(read_package(pkg)<0) return -1;
             if(pkg.type==HIS) break;
             space.push_back(pkg);
+            extra += 80 + ((string)pkg.sender).length();
             if(pkg.type==MSS)
-                extra += pkg.buf_size + 10;
+                extra += pkg.buf_size + 24;
             if(pkg.type==IMG)
-                extra += ((string)pkg.buf).length() + 57; 
+                extra += ((string)pkg.buf).length() + 83; 
             if(pkg.type==FILES)
-                extra += ((string)pkg.buf).length() + 42;
+                extra += ((string)pkg.buf).length() - 1 + 26;
+        }
+        extra += 54;
+        
+        if(get("/chatroom.html",extra)<0) return -1;
+        string nname, oname;
+        tmp = "<html><body><div class=\"dialogue\">";
+        while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
+            if(errno==EAGAIN) continue;
+            return -1;
         }
         
-        extra += ((string)pkg.sender).length() * (int)space.size();
-        if(get("/chatroom.html",extra)<0) return -1;
-        cerr << (int)space.size() << endl;
-        
         for(int i=0;i<((int)space.size());++i){
-            tmp = "<p>" + (string)space[i].sender + " : \0";
+            if(space[i].sender==user){
+                tmp = "<div class=\"user local\"><div class=\"avatar\"><div class=\"name\">\0" + (string)space[i].sender + "</div></div>\0";
+            }
+            else{
+                tmp = "<div class=\"user other\"><div class=\"avatar\"><div class=\"name\">\0" + (string)space[i].sender + "</div></div>\0";
+            }
             if(space[i].type==MSS)
-                tmp = tmp + (string)space[i].buf + "</p>\0";
+                tmp = tmp + "<div class=\"text\">" + (string)space[i].buf + "</div></div>\0";
             if(space[i].type==IMG)
-                tmp = tmp + "</p><img src=\"\0" + (string)space[i].buf + "\" alt=\"404\" width=\"200\" height=\"100\">\0";
-            if(space[i].type==FILES)
-                tmp = tmp + "</p><a href=\"\0" + (string)space[i].buf + "\" download>Download</a>\0";
+                tmp = tmp + "<div class=\"text\"><img src=\"\0" + (string)space[i].buf + "\" width=\"200\" height=\"100\"></div></div>\0";
+            if(space[i].type==FILES){
+                nname = oname = ((string)space[i].buf);
+                res = nname.find("\n");
+                nname = nname.substr(res+1), oname = oname.substr(0,res);
+                tmp = tmp + "<div class=\"text\"><a href=\"\0" + nname + "\" download>\0" + oname + "</a></div></div>\0";
+            }
             while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
                 if(errno==EAGAIN) continue;
                 return -1;
             }
-            cerr << tmp << endl;
+        }
+        tmp = "</div></body></html>";
+        while(send(cli_fd, tmp.c_str(), tmp.length(), MSG_NOSIGNAL)<0){
+            if(errno==EAGAIN) continue;
+            return -1;
         }
         return 0;
     }
-    while((res=send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL))<0){
+    while(send(cli_fd, header404.c_str(), header404.length(), MSG_NOSIGNAL)<0){
         if(errno==EAGAIN) continue;
         return -1;
     }
-    return 0;
+    return -1;
 }
