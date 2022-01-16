@@ -2,6 +2,11 @@
 <html>
 <head>
     <title>Welcome to Chatroom</title>
+    <script>
+    window.setInterval(function(){
+        document.rf.submit();
+    }, 30000);
+    </script>
     <style>
     .dialogue{
         width: 800px;
@@ -78,7 +83,7 @@
     <form action="/homepage" method="post" style="float:left;">
         <input type="submit" value="Back to homepage">
     </form>
-    <form action="/update" method="post">
+    <form name="rf" action="/update" method="post">
         <input type="submit" value="Update chat history">
     </form><br>
     <form action="/view_history" method="post">

@@ -140,7 +140,7 @@ void show_his(string size){
         }
     }
     for(int i=0;i<((int)downloadlist.size());++i){
-        cerr << "downloading" << downloadlist[i].buf << endl;
+        // cerr << "downloading" << downloadlist[i].buf << endl;
         package pkg(GET, (string)downloadlist[i].buf);
         int res;
                     
@@ -297,6 +297,7 @@ int main(int argc, char* argv[]){
                         target = name;
                         status=2;
                         show_chat(name);
+                        show_his("30");
                     }
                     else{
                         show_home();

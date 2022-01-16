@@ -24,3 +24,7 @@ open http://[client ip]:[port3]/
 #linux
 xdg-open http://[client ip]:[port3]/
 ```
+
+make後照著上面提示輸入command就能run起來
+
+如果要使用browser連到client的話，就到網址列輸入client run起來的電腦的[ip]:[port]，就可以接到網站了
