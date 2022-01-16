@@ -140,7 +140,7 @@ void show_his(string size){
         }
     }
     for(int i=0;i<((int)downloadlist.size());++i){
-        cerr << "downloading" << downloadlist[i].buf << endl;
+        // cerr << "downloading" << downloadlist[i].buf << endl;
         package pkg(GET, (string)downloadlist[i].buf);
         int res;
                     

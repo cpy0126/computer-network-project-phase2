@@ -204,7 +204,6 @@ int main(int argc, char* argv[]){
                 string new_user=string(requestP[conn_fd].now.buf);
                 if(user_names.find(new_user)!=user_names.end()){
                     set_response(&response,LOGIN,strlen(failed),failed,NULL,NULL);
-                    // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     send_response(&requestP[conn_fd],response);
                     continue;
                 }
@@ -212,7 +211,6 @@ int main(int argc, char* argv[]){
                 mkdir(new_user.c_str(),0777);
                 set_response(&response,LOGIN,strlen(succeed),succeed,NULL,NULL);
                 send_response(&requestP[conn_fd],response);
-                // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 requestP[conn_fd].user_name=new_user;
                 continue;
             }
@@ -221,7 +219,6 @@ int main(int argc, char* argv[]){
                 string new_friend = string(requestP[conn_fd].now.buf);
                 if(!check_person(new_friend)){
                     set_response(&response,ADD,strlen(failed),failed,NULL,NULL);
-                    // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     send_response(&requestP[conn_fd],response);
                     continue;
                 }
@@ -236,7 +233,6 @@ int main(int argc, char* argv[]){
                 creat(friend_name2.c_str(),0777);
 
                 set_response(&response,ADD,strlen(succeed),succeed,NULL,NULL);
-                // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 send_response(&requestP[conn_fd],response);
             }
             else if(requestP[conn_fd].now.type==DEL){    // Deleteing friend
@@ -249,8 +245,6 @@ int main(int argc, char* argv[]){
                 }
                 string friend_name="./"+requestP[conn_fd].user_name+"/"+new_friend;
                 string tmp=friend_name+"/chat";
-                // remove(tmp.c_str());
-                // rmdir(friend_name.c_str());
                 del_dir(friend_name);
 
                 if(requestP[conn_fd].user_name!=new_friend){
@@ -276,7 +270,6 @@ int main(int argc, char* argv[]){
                 close(me);
                 if(requestP[conn_fd].user_name==new_friend){
                     set_response(&response,MSS,strlen(succeed),succeed,NULL,NULL);
-                    // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                     send_response(&requestP[conn_fd],response);
                     continue;
                 }
@@ -286,7 +279,6 @@ int main(int argc, char* argv[]){
                 close(you);
 
                 set_response(&response,MSS,strlen(succeed),succeed,NULL,NULL);
-                // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 send_response(&requestP[conn_fd],response);
             }
             else if(requestP[conn_fd].now.type==IMG||requestP[conn_fd].now.type==FILES){   // receve image
@@ -349,13 +341,11 @@ int main(int argc, char* argv[]){
                 string data_size=to_string(size);
                 friend_num=friend_num+" "+data_size;
                 set_response(&num,LIST,friend_num.size(),(char *)friend_num.c_str(),NULL,NULL);
-                // send(requestP[conn_fd].conn_fd,&num,sizeof(package),MSG_NOSIGNAL);
                 send_response(&requestP[conn_fd],num);
                 for(int i=0;i<n;i++){
                     string f_name=(string)(user_file[i]->d_name);
                     package tmp;
                     set_response(&tmp,LIST,f_name.size(),(char *)f_name.c_str(),NULL,NULL);
-                    // send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
                     send_response(&requestP[conn_fd],tmp);
                     free(user_file[i]);
                 }
@@ -378,7 +368,6 @@ int main(int argc, char* argv[]){
                     set_response(&response,CHECK,strlen(succeed),succeed,NULL,NULL);
                 else
                     set_response(&response,CHECK,strlen(failed),failed,NULL,NULL);
-                // send(requestP[conn_fd].conn_fd,&response,sizeof(package),MSG_NOSIGNAL);
                 send_response(&requestP[conn_fd],response);
             }
             else if(requestP[conn_fd].now.type==HIS){
@@ -390,11 +379,9 @@ int main(int argc, char* argv[]){
                 for(int a=0;a<min(his_size,n);a++){
                     package tmp;
                     read(fd,&tmp,sizeof(package));
-                    // send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
                     send_response(&requestP[conn_fd],tmp);
                 }
                 close(fd);
-                // send(requestP[conn_fd].conn_fd,&(requestP[conn_fd].now),sizeof(package),MSG_NOSIGNAL);
                 send_response(&requestP[conn_fd],requestP[conn_fd].now);
             }
             else if(requestP[conn_fd].now.type==GET){
@@ -408,14 +395,12 @@ int main(int argc, char* argv[]){
                 string size=to_string(file_size);
                 package res_size;
                 set_response(&res_size,GET,size.size(),(char *)size.c_str(),NULL,NULL);
-                // send(requestP[conn_fd].conn_fd,&res_size,sizeof(package),MSG_NOSIGNAL);
                 send_response(&requestP[conn_fd],res_size);
                 while(file_size>0){
                     package tmp;
                     char buf[2048];memset(buf,0,2048);
                     int read_size=read(file_fd,buf,2048);
                     set_response(&tmp,GET,read_size,buf,NULL,NULL);
-                    // send(requestP[conn_fd].conn_fd,&tmp,sizeof(package),MSG_NOSIGNAL);
                     send_response(&requestP[conn_fd],tmp);
                     file_size-=read_size;
                 }
